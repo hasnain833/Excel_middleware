@@ -81,7 +81,7 @@
       "post": {
         "summary": "Read a range from a worksheet",
         "operationId": "readExcelRange",
-        "description": "Provide itemName; driveName is optional if only one drive exists (auto-selected). sheetName and range are optional. If sheetName is omitted and multiple sheets exist, 400 with availableSheets. If multiple drives exist and driveName is omitted, 400 with availableDrives. If range is omitted, return usedRange values. Range may be sheet-qualified (e.g., 'Sheet1!A1:D10').",
+        "description": "Read a range or the usedRange. Provide itemName; driveName optional if a single drive exists (auto-selected). sheetName optional; if multiple sheets and omitted, 400 with availableSheets. Range may be 'Sheet!A1:B2'.",
         "requestBody": {
           "required": true,
           "content": {
@@ -116,7 +116,7 @@
       "post": {
         "summary": "Write values to a range in a worksheet",
         "operationId": "writeExcelRange",
-        "description": "Provide itemName and values; driveName is optional if only one drive exists (auto-selected). sheetName and range are optional. Behavior: if sheetName is omitted and only one sheet exists, it will be used; if multiple sheets exist, a 400 with availableSheets is returned. If multiple drives exist and driveName is omitted, 400 with availableDrives is returned. If range is omitted, values are appended after the sheet's usedRange.",
+        "description": "Write to a range or append after usedRange. Provide itemName and values (2D). driveName optional if a single drive exists (auto-selected). sheetName optional; if multiple sheets and omitted, 400 with availableSheets.",
         "requestBody": {
           "required": true,
           "content": {
@@ -295,7 +295,7 @@
           "itemName": { "type": "string" },
           "sheetName": { "type": "string" },
           "range": { "type": "string" },
-          "values": { "type": "array", "items": { "type": "array", "items": {} } }
+          "values": { "type": "array", "description": "2D array of rows to write, e.g., [[\"Header1\",\"Header2\"],[\"Row1\",\"Row2\"]]", "items": { "type": "array", "items": {} } }
         },
       "required": ["itemName", "values"]
       },

@@ -148,13 +148,17 @@ POST /excel/read
   - URL: `/excel/write`
   - Body fields:
     - `itemName` (required)
-    - `values` (required; 2D array)
+    - `values` (required; 2D array like `[["Header1","Header2"],["Row1","Row2"]]`)
     - `driveName` (optional if only one drive)
     - `sheetName` (optional if only one sheet)
     - `range` (optional; `Sheet!A1:B2` or `A1:B2`)
   - Behavior:
     - With `range`: writes exactly to that address.
     - Without `range`: appends after the used range starting at column A. The middleware computes the destination and logs `Auto range`.
+  - Validation:
+    - If `itemName` is missing → 400 with: `Missing itemName (the workbook filename is required).`
+    - If `values` is missing or not an array → 400 with: `Missing values. Must be a 2D array, e.g. [["Header1","Header2"],["Row1","Row2"]]`
+    - `driveName` is not required; the middleware will auto-select a single available drive or return a 400 with `availableDrives` if multiple exist.
 - Examples:
   - Explicit range:
 ```json
@@ -184,6 +188,30 @@ POST /excel/write
     "message": "No range provided. Appending data after row 12.",
     "writtenTo": "A13:B13"
   }
+}
+```
+
+- Error Examples:
+  - Missing itemName
+```json
+{
+  "success": false,
+  "error": "Missing itemName (the workbook filename is required)."
+}
+```
+  - Missing/invalid values (not a 2D array)
+```json
+{
+  "success": false,
+  "error": "Missing values. Must be a 2D array, e.g. [[\"Header1\",\"Header2\"],[\"Row1\",\"Row2\"]]"
+}
+```
+  - Multiple drives exist and driveName not specified
+```json
+{
+  "success": false,
+  "error": "Multiple drives found. Please specify driveName.",
+  "availableDrives": ["Documents", "Shared Documents"]
 }
 ```
 
