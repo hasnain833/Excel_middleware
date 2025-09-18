@@ -56,7 +56,7 @@
         "summary": "List items in a drive",
         "operationId": "listItems",
         "parameters": [
-          { "in": "query", "name": "driveName", "schema": { "type": "string" }, "required": true, "description": "Drive name (e.g., Documents, Shared Documents)" },
+          { "in": "query", "name": "driveName", "schema": { "type": "string" }, "required": false, "description": "Optional drive name. If omitted and a single drive exists, it is auto-selected; if multiple exist, 400 with availableDrives is returned." },
           { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
           { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override (e.g., https://tenant.sharepoint.com/sites/YourSite)" },
           { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
@@ -71,7 +71,7 @@
               }
             }
           },
-          "400": { "description": "Bad request (missing driveName)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "400": { "description": "Multiple drives exist and driveName not specified", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } } } },
           "404": { "description": "Drive not found (returns available names in error message)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
@@ -81,7 +81,7 @@
       "post": {
         "summary": "Read a range from a worksheet",
         "operationId": "readExcelRange",
-        "description": "Provide driveName/itemName. sheetName and range are optional. If sheetName is omitted and multiple sheets exist, 400 with availableSheets. If range is omitted, return usedRange values. Range may be sheet-qualified (e.g., 'Sheet1!A1:D10').",
+        "description": "Provide itemName; driveName is optional if only one drive exists (auto-selected). sheetName and range are optional. If sheetName is omitted and multiple sheets exist, 400 with availableSheets. If multiple drives exist and driveName is omitted, 400 with availableDrives. If range is omitted, return usedRange values. Range may be sheet-qualified (e.g., 'Sheet1!A1:D10').",
         "requestBody": {
           "required": true,
           "content": {
@@ -94,11 +94,11 @@
                 },
                 "noRangeSingleSheet": {
                   "summary": "No range, single sheet auto-selected",
-                  "value": { "driveName": "Shared Documents", "itemName": "TestWorkbook.xlsx" }
+                  "value": { "itemName": "TestWorkbook.xlsx" }
                 },
                 "withSiteUrl": {
                   "summary": "Provide siteUrl to override env config",
-                  "value": { "siteUrl": "https://yourtenant.sharepoint.com/sites/Finance", "driveName": "Documents", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:D10" }
+                  "value": { "siteUrl": "https://yourtenant.sharepoint.com/sites/Finance", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:D10" }
                 }
               }
             }
@@ -106,7 +106,7 @@
         },
         "responses": {
           "200": { "description": "Read success (range response or usedRange values)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadSuccess" } } } },
-          "400": { "description": "Bad request (e.g., multiple sheets without sheetName)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or multiple drives without driveName)", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
           "404": { "description": "Drive/file/sheet not found (may include available names)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
@@ -116,7 +116,7 @@
       "post": {
         "summary": "Write values to a range in a worksheet",
         "operationId": "writeExcelRange",
-        "description": "Provide driveName/itemName and values. sheetName and range are optional. Behavior: if sheetName is omitted and only one sheet exists, it will be used; if multiple sheets exist, a 400 with availableSheets is returned. If range is omitted, values are appended after the sheet's usedRange.",
+        "description": "Provide itemName and values; driveName is optional if only one drive exists (auto-selected). sheetName and range are optional. Behavior: if sheetName is omitted and only one sheet exists, it will be used; if multiple sheets exist, a 400 with availableSheets is returned. If multiple drives exist and driveName is omitted, 400 with availableDrives is returned. If range is omitted, values are appended after the sheet's usedRange.",
         "requestBody": {
           "required": true,
           "content": {
@@ -131,9 +131,13 @@
                   "summary": "No range provided; values appended after usedRange",
                   "value": { "driveName": "Shared Documents", "itemName": "TestWorkbook.xlsx", "sheetName": "Sheet1", "values": [["Date","Item","Amount"],["2025-09-01","Sample",100]] }
                 },
+                "autoSelectDrive": {
+                  "summary": "Omit driveName; auto-select when only one drive exists",
+                  "value": { "itemName": "TestWorkbook.xlsx", "sheetName": "Sheet1", "values": [["North", 10]] }
+                },
                 "withSiteId": {
                   "summary": "Provide siteId to override env config",
-                  "value": { "siteId": "your-site-id", "driveName": "Documents", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:B2", "values": [["Date", "Amount"], ["2025-09-01", 100]] }
+                  "value": { "siteId": "your-site-id", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:B2", "values": [["Date", "Amount"], ["2025-09-01", 100]] }
                 }
               }
             }
@@ -141,7 +145,7 @@
         },
         "responses": {
           "200": { "description": "Write success (range patch or appended)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WriteSuccess" } } } },
-          "400": { "description": "Bad request (e.g., multiple sheets without sheetName)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or multiple drives without driveName)", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
           "404": { "description": "Drive/file/sheet not found (may include available names)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
@@ -177,7 +181,7 @@
         },
         "responses": {
           "200": { "description": "Clear success (range only or entire usedRange when applyTo=all)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteSuccess" } } } },
-          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or missing applyTo)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or multiple drives without driveName or missing applyTo)", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
           "404": { "description": "Drive/file/sheet not found (may include available names)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
@@ -266,7 +270,7 @@
 
       "ReadRequest": {
         "type": "object",
-        "description": "Provide driveName/itemName. sheetName and range are optional. Worksheet can be specified via sheetName or as a Sheet! prefix in range.",
+        "description": "Provide itemName; driveName is optional if only one drive exists (auto-selected). sheetName and range are optional. Worksheet can be specified via sheetName or as a Sheet! prefix in range.",
         "properties": {
           "siteId": { "type": "string" },
           "siteUrl": { "type": "string" },
@@ -278,7 +282,7 @@
           "sheetName": { "type": "string" },
           "range": { "type": "string" }
         },
-        "required": ["driveName", "itemName"]
+        "required": ["itemName"]
       },
       "WriteRequest": {
         "type": "object",
@@ -293,7 +297,7 @@
           "range": { "type": "string" },
           "values": { "type": "array", "items": { "type": "array", "items": {} } }
         },
-      "required": ["driveName", "itemName", "values"]
+      "required": ["itemName", "values"]
       },
       "CreateSheetRequest": {
         "type": "object",
@@ -321,7 +325,7 @@
           "range": { "type": "string" },
           "applyTo": { "type": "string", "default": "contents", "description": "One of: contents, formats, hyperLinks, or 'all' to clear entire usedRange when range is omitted" }
         },
-        "required": ["driveName", "itemName"]
+        "required": ["itemName"]
       },
       "DeleteSheetRequest": {
         "type": "object",

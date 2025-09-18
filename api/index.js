@@ -367,8 +367,17 @@ app.post("/excel/write", async (req, res) => {
     const ctx = getSiteContext(req);
     let { driveName, itemName, sheetName, range, values } = req.body || {};
 
-    if (!itemName || !Array.isArray(values)) {
-      return res.status(400).json({ success: false, error: "Missing body. Required: itemName and values (2D array). driveName optional if only one drive." });
+    if (!itemName) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing itemName (the workbook filename is required)."
+      });
+    }
+    if (!Array.isArray(values)) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing values. Must be a 2D array, e.g. [[\"Header1\",\"Header2\"],[\"Row1\",\"Row2\"]]"
+      });
     }
 
     // Parse possible Sheet!A1:B2
