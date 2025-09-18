@@ -31,6 +31,7 @@ async function getAccessToken() {
     );
   }
 
+
   const now = Date.now();
   const safetyWindowMs = 60_000; // refresh 60s before expiry
   if (cachedToken && now < tokenExpiresAt - safetyWindowMs) {
@@ -128,6 +129,31 @@ async function graphFetch(url, options = {}) {
 const NAME_CACHE_TTL_MS = 10 * 60 * 1000;
 const driveCache = new Map(); // key: driveNameLower -> { id, ts }
 const itemCache = new Map();  // key: `${driveId}:${itemNameLower}` -> { id, ts }
+const siteCache = new Map();       // key: siteUrl|default -> site object
+const driveListCache = new Map();  // key: siteUrl|default -> drives array
+
+// Cached helpers (keyed by siteUrl)
+function getSiteCacheKey(ctx = {}) {
+  // Prefer explicit siteUrl; otherwise use env or a generic key to avoid cache explosion
+  const key = ctx.siteUrl || process.env.SHAREPOINT_SITE_URL || 'default';
+  return key;
+}
+
+async function resolveSiteIdCached(ctx = {}) {
+  const key = getSiteCacheKey(ctx);
+  if (siteCache.has(key)) return siteCache.get(key);
+  const site = await resolveSiteId(ctx);
+  siteCache.set(key, site);
+  return site;
+}
+
+async function listDrivesCached(ctx = {}) {
+  const key = getSiteCacheKey(ctx);
+  if (driveListCache.has(key)) return driveListCache.get(key);
+  const drives = await listDrives(ctx);
+  driveListCache.set(key, drives);
+  return drives;
+}
 
 // Helpers to resolve driveId/itemId from names (case-insensitive)
 function getSiteContext(req) {
@@ -233,14 +259,22 @@ async function resolveItemIdByName(driveId, itemName) {
 
 // Public helpers that throw with helpful messages
 async function resolveDriveId(driveName, ctx = {}) {
-  const driveRes = await resolveDriveIdByName(driveName, ctx);
-  if (!driveRes.id) {
-    const list = JSON.stringify(driveRes.available || []);
+  // Retry logic if list is empty
+  let drives = await listDrivesCached(ctx);
+  if (!drives.length) {
+    console.warn(`[WARN] No drives found. Retrying in 1s...`);
+    await new Promise((r) => setTimeout(r, 1000));
+    drives = await listDrivesCached(ctx);
+  }
+  console.log(`[Debug] resolveDriveId: looking for "${driveName}". Available: ${drives.map((d) => d.name).join(', ')}`);
+  const drive = drives.find((d) => String(d.name).toLowerCase() === String(driveName).toLowerCase());
+  if (!drive) {
+    const list = JSON.stringify(drives.map((d) => d.name));
     const err = new Error(`Drive not found. Available drives: ${list}`);
     err.status = 404;
     throw err;
   }
-  return driveRes.id;
+  return drive.id;
 }
 
 async function resolveItemId(driveId, itemName) {
@@ -456,7 +490,10 @@ app.post("/excel/delete-sheet", async (req, res) => {
 app.get("/list-drives", async (req, res) => {
   try {
     const ctx = getSiteContext(req);
-    const drives = await listDrives(ctx);
+    // Resolve site via cached helper and then list drives via cached helper
+    const site = await resolveSiteIdCached(ctx);
+    const drives = await listDrivesCached(ctx);
+    console.log(`[Debug] /list-drives siteUrl=${ctx.siteUrl || '(none)'} siteId=${site.id || '(unknown)'} drives.count=${drives.length}`);
     return res.json({ success: true, drives });
   } catch (err) {
     const status = err.status || 500;
