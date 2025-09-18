@@ -125,36 +125,6 @@ async function graphFetch(url, options = {}) {
   return data;
 }
 
-// Simple in-memory caches with 10-minute TTL
-const NAME_CACHE_TTL_MS = 10 * 60 * 1000;
-const driveCache = new Map(); // key: driveNameLower -> { id, ts }
-const itemCache = new Map();  // key: `${driveId}:${itemNameLower}` -> { id, ts }
-const siteCache = new Map();       // key: siteUrl|default -> site object
-const driveListCache = new Map();  // key: siteUrl|default -> drives array
-
-// Cached helpers (keyed by siteUrl)
-function getSiteCacheKey(ctx = {}) {
-  // Prefer explicit siteUrl; otherwise use env or a generic key to avoid cache explosion
-  const key = ctx.siteUrl || process.env.SHAREPOINT_SITE_URL || 'default';
-  return key;
-}
-
-async function resolveSiteIdCached(ctx = {}) {
-  const key = getSiteCacheKey(ctx);
-  if (siteCache.has(key)) return siteCache.get(key);
-  const site = await resolveSiteId(ctx);
-  siteCache.set(key, site);
-  return site;
-}
-
-async function listDrivesCached(ctx = {}) {
-  const key = getSiteCacheKey(ctx);
-  if (driveListCache.has(key)) return driveListCache.get(key);
-  const drives = await listDrives(ctx);
-  driveListCache.set(key, drives);
-  return drives;
-}
-
 // Helpers to resolve driveId/itemId from names (case-insensitive)
 function getSiteContext(req) {
   // Allows passing site context in either body or query
@@ -217,6 +187,7 @@ async function resolveSiteId(ctx = {}) {
 
 async function listDrives(ctx = {}) {
   const site = await resolveSiteId(ctx);
+  console.log(`[Graph] Fetching drives for site: ${ctx.siteUrl || ctx.siteId || site.id}`);
   const url = `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(
     site.id
   )}/drives`;
@@ -227,17 +198,14 @@ async function listDrives(ctx = {}) {
 
 async function resolveDriveIdByName(driveName, ctx = {}) {
   const key = String(driveName || "").toLowerCase();
-  const cached = driveCache.get(key);
-  if (cached && Date.now() - cached.ts < NAME_CACHE_TTL_MS) return cached.id;
-
   const drives = await listDrives(ctx);
   const match = drives.find((d) => String(d.name).toLowerCase() === key);
   if (!match) return { id: null, available: drives.map((d) => d.name) };
-  driveCache.set(key, { id: match.id, ts: Date.now() });
   return { id: match.id, available: drives.map((d) => d.name) };
 }
 
 async function listItems(driveId) {
+  console.log(`[Graph] Fetching items for drive: ${driveId}`);
   const url = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(
     driveId
   )}/root/children?$select=id,name&$top=999`;
@@ -246,25 +214,20 @@ async function listItems(driveId) {
 }
 
 async function resolveItemIdByName(driveId, itemName) {
-  const key = `${driveId}:${String(itemName || "").toLowerCase()}`;
-  const cached = itemCache.get(key);
-  if (cached && Date.now() - cached.ts < NAME_CACHE_TTL_MS) return cached.id;
-
   const items = await listItems(driveId);
   const match = items.find((it) => String(it.name).toLowerCase() === String(itemName).toLowerCase());
   if (!match) return { id: null, available: items.map((i) => i.name) };
-  itemCache.set(key, { id: match.id, ts: Date.now() });
   return { id: match.id, available: items.map((i) => i.name) };
 }
 
 // Public helpers that throw with helpful messages
 async function resolveDriveId(driveName, ctx = {}) {
-  // Retry logic if list is empty
-  let drives = await listDrivesCached(ctx);
+  // Retry once on empty response (still hits Graph directly)
+  let drives = await listDrives(ctx);
   if (!drives.length) {
     console.warn(`[WARN] No drives found. Retrying in 1s...`);
     await new Promise((r) => setTimeout(r, 1000));
-    drives = await listDrivesCached(ctx);
+    drives = await listDrives(ctx);
   }
   console.log(`[Debug] resolveDriveId: looking for "${driveName}". Available: ${drives.map((d) => d.name).join(', ')}`);
   const drive = drives.find((d) => String(d.name).toLowerCase() === String(driveName).toLowerCase());
@@ -318,30 +281,49 @@ app.post("/excel/read", async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     let { driveName, itemName, sheetName, range } = req.body || {};
-    if (!driveName || !itemName || !range) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing body. Required: driveName, itemName, range",
-      });
+    if (!driveName || !itemName) {
+      return res.status(400).json({ success: false, error: "Missing body. Required: driveName, itemName" });
     }
 
     const driveId = await resolveDriveId(driveName, ctx);
     const itemId = await resolveItemId(driveId, itemName);
 
     // Support Sheet!A1:B2
-    const parsed = parseSheetAndAddress(range);
-    if (parsed.sheetName && !sheetName) sheetName = parsed.sheetName;
-    const address = parsed.address;
-    if (!sheetName) {
-      return res.status(400).json({ success: false, error: "sheetName is required (or prefix range as Sheet!A1:B2)" });
+    if (range) {
+      const parsed = parseSheetAndAddress(range);
+      if (parsed.sheetName && !sheetName) sheetName = parsed.sheetName;
+      range = parsed.address;
     }
 
+    // Determine sheetName dynamically if missing
+    const sheets = await listWorksheets(driveId, itemId);
+    const availableSheets = sheets.map((s) => s.name);
+    if (!sheetName) {
+      if (sheets.length === 1) {
+        sheetName = sheets[0].name;
+      } else {
+        return res.status(400).json({ success: false, error: "Multiple sheets found. Please specify sheetName.", availableSheets });
+      }
+    } else {
+      const exists = sheets.some((s) => String(s.name).toLowerCase() === String(sheetName).toLowerCase());
+      if (!exists) {
+        return res.status(404).json({ success: false, error: "Sheet not found.", availableSheets });
+      }
+    }
+    console.log(`[Debug] Using sheet: ${sheetName}`);
+
     const base = buildWorkbookBase({ driveId, itemId });
-    const url = `${base}/worksheets('${encodeURIComponent(
-      sheetName
-    )}')/range(address='${encodeURIComponent(address)}')`;
-    const data = await graphFetch(url, { method: "GET" });
-    return res.json({ success: true, data });
+    if (range && range.trim().length > 0) {
+      console.log(`[Debug] Reading range: ${sheetName}!${range}`);
+      const url = `${base}/worksheets('${encodeURIComponent(sheetName)}')/range(address='${encodeURIComponent(range)}')`;
+      const data = await graphFetch(url, { method: "GET" });
+      return res.json({ success: true, data });
+    }
+
+    // No range provided: return usedRange values
+    const usedUrl = `${base}/worksheets('${encodeURIComponent(sheetName)}')/usedRange`;
+    const used = await graphFetch(usedUrl, { method: "GET" });
+    return res.json({ success: true, data: { message: "No range provided. Returning full sheet contents.", values: used?.values || [] } });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ success: false, error: err.message });
@@ -369,30 +351,65 @@ app.post("/excel/write", async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     let { driveName, itemName, sheetName, range, values } = req.body || {};
-    const parsed = parseSheetAndAddress(range);
-    if (parsed.sheetName && !sheetName) sheetName = parsed.sheetName;
-    const address = parsed.address;
 
-    if (!driveName || !itemName || !sheetName || !address || !Array.isArray(values)) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Missing body. Required: driveName, itemName, sheetName (or prefix range), range, values(2D array)",
-      });
+    if (!driveName || !itemName || !Array.isArray(values)) {
+      return res.status(400).json({ success: false, error: "Missing body. Required: driveName, itemName, values(2D array)" });
+    }
+
+    // Parse possible Sheet!A1:B2
+    if (range) {
+      const parsed = parseSheetAndAddress(range);
+      if (parsed.sheetName && !sheetName) sheetName = parsed.sheetName;
+      range = parsed.address;
     }
 
     const driveId = await resolveDriveId(driveName, ctx);
     const itemId = await resolveItemId(driveId, itemName);
 
+    // Determine sheetName dynamically
+    const sheets = await listWorksheets(driveId, itemId);
+    const availableSheets = sheets.map((s) => s.name);
+    if (!sheetName) {
+      if (sheets.length === 1) sheetName = sheets[0].name;
+      else return res.status(400).json({ success: false, error: "Multiple sheets found. Please specify sheetName.", availableSheets });
+    } else {
+      const exists = sheets.some((s) => String(s.name).toLowerCase() === String(sheetName).toLowerCase());
+      if (!exists) return res.status(404).json({ success: false, error: "Sheet not found.", availableSheets });
+    }
+    console.log(`[Debug] Using sheet: ${sheetName}`);
+
     const base = buildWorkbookBase({ driveId, itemId });
-    const url = `${base}/worksheets('${encodeURIComponent(
-      sheetName
-    )}')/range(address='${encodeURIComponent(address)}')`;
-    const data = await graphFetch(url, {
-      method: "PATCH",
-      body: JSON.stringify({ values }),
-    });
-    return res.json({ success: true, data });
+
+    // Helper to convert number to Excel column letters (1-based)
+    const numToCol = (n) => {
+      let s = "";
+      while (n > 0) { n--; s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26); }
+      return s;
+    };
+
+    if (range && range.trim().length > 0) {
+      console.log(`[Debug] Writing to explicit range: ${sheetName}!${range}`);
+      const url = `${base}/worksheets('${encodeURIComponent(sheetName)}')/range(address='${encodeURIComponent(range)}')`;
+      const data = await graphFetch(url, { method: "PATCH", body: JSON.stringify({ values }) });
+      return res.json({ success: true, data });
+    }
+
+    // No range provided → append after used range
+    const usedUrl = `${base}/worksheets('${encodeURIComponent(sheetName)}')/usedRange`;
+    const used = await graphFetch(usedUrl, { method: "GET" });
+    const rowIndex = Number(used?.rowIndex ?? 0); // 0-based
+    const rowCount = Number(used?.rowCount ?? 0);
+    const nextRow = rowIndex + rowCount + 1; // Excel addresses are 1-based
+    const cols = Array.isArray(values[0]) ? values[0].length : 1;
+    const rows = Array.isArray(values) ? values.length : 1;
+    const endCol = numToCol(cols);
+    const endRow = nextRow + rows - 1;
+    const autoRange = `A${nextRow}:${endCol}${endRow}`;
+    console.log(`[Debug] Appending data after row ${rowIndex + rowCount}`);
+    console.log(`[Debug] Auto range: ${sheetName}!${autoRange}`);
+    const url = `${base}/worksheets('${encodeURIComponent(sheetName)}')/range(address='${encodeURIComponent(autoRange)}')`;
+    const data = await graphFetch(url, { method: "PATCH", body: JSON.stringify({ values }) });
+    return res.json({ success: true, data: { message: `No range provided. Appending data after row ${rowIndex + rowCount}.`, writtenTo: `${autoRange}` } });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ success: false, error: err.message });
@@ -434,24 +451,46 @@ app.post("/excel/delete", async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     let { driveName, itemName, sheetName, range, applyTo = "contents" } = req.body || {};
-    if (!driveName || !itemName || !sheetName || !range) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing body. Required: driveName, itemName, sheetName, range",
-      });
+    if (!driveName || !itemName) {
+      return res.status(400).json({ success: false, error: "Missing body. Required: driveName, itemName" });
+    }
+
+    // Parse possible Sheet!A1:B2
+    if (range) {
+      const parsed = parseSheetAndAddress(range);
+      if (parsed.sheetName && !sheetName) sheetName = parsed.sheetName;
+      range = parsed.address;
     }
 
     const driveId = await resolveDriveId(driveName, ctx);
     const itemId = await resolveItemId(driveId, itemName);
+    const sheets = await listWorksheets(driveId, itemId);
+    const availableSheets = sheets.map((s) => s.name);
+    if (!sheetName) {
+      if (sheets.length === 1) sheetName = sheets[0].name;
+      else return res.status(400).json({ success: false, error: "Multiple sheets found. Please specify sheetName.", availableSheets });
+    } else {
+      const exists = sheets.some((s) => String(s.name).toLowerCase() === String(sheetName).toLowerCase());
+      if (!exists) return res.status(404).json({ success: false, error: "Sheet not found.", availableSheets });
+    }
+    console.log(`[Debug] Using sheet: ${sheetName}`);
+
     const base = buildWorkbookBase({ driveId, itemId });
-    const url = `${base}/worksheets('${encodeURIComponent(
-      sheetName
-    )}')/range(address='${encodeURIComponent(range)}')/clear`;
-    const data = await graphFetch(url, {
-      method: "POST",
-      body: JSON.stringify({ applyTo }),
-    });
-    return res.json({ success: true, data });
+    if (range && range.trim().length > 0) {
+      console.log(`[Debug] Clearing range: ${sheetName}!${range}`);
+      const url = `${base}/worksheets('${encodeURIComponent(sheetName)}')/range(address='${encodeURIComponent(range)}')/clear`;
+      const data = await graphFetch(url, { method: "POST", body: JSON.stringify({ applyTo }) });
+      return res.json({ success: true, data });
+    }
+
+    // No range provided
+    if (String(applyTo).toLowerCase() === "all") {
+      console.log(`[Debug] Clearing entire used range for sheet: ${sheetName}`);
+      const url = `${base}/worksheets('${encodeURIComponent(sheetName)}')/usedRange/clear`;
+      const data = await graphFetch(url, { method: "POST", body: JSON.stringify({ applyTo: "contents" }) });
+      return res.json({ success: true, data: { message: "Cleared entire sheet used range." } });
+    }
+    return res.status(400).json({ success: false, error: "No range provided. To clear entire sheet, call again with applyTo=all." });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ success: false, error: err.message });
@@ -490,9 +529,9 @@ app.post("/excel/delete-sheet", async (req, res) => {
 app.get("/list-drives", async (req, res) => {
   try {
     const ctx = getSiteContext(req);
-    // Resolve site via cached helper and then list drives via cached helper
-    const site = await resolveSiteIdCached(ctx);
-    const drives = await listDrivesCached(ctx);
+    // Always resolve site and list drives via Graph
+    const site = await resolveSiteId(ctx);
+    const drives = await listDrives(ctx);
     console.log(`[Debug] /list-drives siteUrl=${ctx.siteUrl || '(none)'} siteId=${site.id || '(unknown)'} drives.count=${drives.length}`);
     return res.json({ success: true, drives });
   } catch (err) {
