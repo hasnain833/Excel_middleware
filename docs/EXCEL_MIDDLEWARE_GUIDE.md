@@ -16,6 +16,7 @@ This guide explains how to use the Excel GPT Middleware to interact with SharePo
 - POST `/excel/read`
 - POST `/excel/write`
 - POST `/excel/delete`
+- POST `/excel/create-file`
 
 Compatibility aliases are also available under `/api/*` (e.g., `/api/excel/read` => `/excel/read`).
 
@@ -255,6 +256,66 @@ POST /excel/delete
 {
   "success": true,
   "data": { "message": "Cleared entire sheet used range." }
+}
+```
+
+### 6) Create File
+
+- Purpose: Create a new empty Excel workbook in the root of a drive so it can be used immediately by other endpoints (read/write/delete).
+- Request:
+  - Method: POST
+  - URL: `/excel/create-file`
+  - Body fields:
+    - `fileName` (required; must end with `.xlsx`)
+    - `driveName` (optional if only one drive)
+    - `template` (optional; `blank` default; `copy` reserved for future use)
+    - Site context overrides supported: `siteId`, `siteUrl`, `hostname`/`sharepointHostname`, `siteName`/`sharepointSiteName`
+- Behavior:
+  - If `driveName` is omitted and only one drive exists → auto-selected.
+  - If multiple drives exist and `driveName` is omitted → 400 with `availableDrives`.
+  - If a file with the same `fileName` already exists in the root → 409 conflict with `{ success: false, error: "File already exists." }`.
+  - Currently supports `template = "blank"` only.
+- Examples:
+  - Auto-select drive (single-drive tenant):
+```json
+POST /excel/create-file
+{
+  "siteUrl": "https://yourtenant.sharepoint.com/sites/MySite",
+  "fileName": "NewReport.xlsx"
+}
+```
+  - Explicit drive:
+```json
+POST /excel/create-file
+{
+  "siteUrl": "https://yourtenant.sharepoint.com/sites/MySite",
+  "driveName": "Documents",
+  "fileName": "Quarterly.xlsx"
+}
+```
+- Sample Success Response:
+```json
+{
+  "success": true,
+  "message": "File 'NewReport.xlsx' created successfully.",
+  "id": "01ABCDEF...",
+  "webUrl": "https://yourtenant.sharepoint.com/:x:/r/sites/MySite/Shared%20Documents/NewReport.xlsx"
+}
+```
+- Error Examples:
+  - File already exists
+```json
+{
+  "success": false,
+  "error": "File already exists."
+}
+```
+  - Multiple drives and driveName not specified
+```json
+{
+  "success": false,
+  "error": "Multiple drives found. Please specify driveName.",
+  "availableDrives": ["Documents", "Shared Documents"]
 }
 ```
 

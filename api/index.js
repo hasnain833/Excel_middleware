@@ -345,6 +345,75 @@ app.post("/excel/read", async (req, res) => {
   }
 });
 
+// POST /excel/create-file
+// Body: { siteUrl?, driveName?, fileName (must end with .xlsx), template? ("blank" | "copy") }
+app.post("/excel/create-file", async (req, res) => {
+  try {
+    const ctx = getSiteContext(req);
+    let { driveName, fileName, template = "blank" } = req.body || {};
+
+    if (!fileName) {
+      return res.status(400).json({ success: false, error: "Missing body. Required: fileName (must end with .xlsx)." });
+    }
+    if (!String(fileName).toLowerCase().endsWith(".xlsx")) {
+      return res.status(400).json({ success: false, error: "fileName must end with .xlsx" });
+    }
+
+    // Drive auto-selection logic (consistent with /excel/read, /excel/write, /excel/delete, /list-items)
+    let driveId;
+    if (!driveName) {
+      const drives = await listDrives(ctx);
+      const availableDrives = drives.map((d) => d.name);
+      if (drives.length === 1) {
+        driveId = drives[0].id;
+        driveName = drives[0].name;
+        console.log(`[Debug] Auto-selected drive: ${driveName} (${driveId})`);
+      } else {
+        console.log(`[Debug] Multiple drives found, cannot auto-select. Available: ${availableDrives.join(', ')}`);
+        return res.status(400).json({ success: false, error: "Multiple drives found. Please specify driveName.", availableDrives });
+      }
+    } else {
+      driveId = await resolveDriveId(driveName, ctx);
+    }
+
+    console.log(`[Debug] Creating new Excel file: ${fileName} in drive ${driveName || '(auto-selected)'}`);
+
+    // Check if file already exists in root
+    const existing = await resolveItemIdByName(driveId, fileName);
+    if (existing && existing.id) {
+      return res.status(409).json({ success: false, error: "File already exists." });
+    }
+
+    // Handle template behavior (future-proofing)
+    const tpl = String(template || "blank").toLowerCase();
+    if (tpl !== "blank" && tpl !== "copy") {
+      return res.status(400).json({ success: false, error: "Invalid template. Use 'blank' or 'copy'." });
+    }
+    if (tpl === "copy") {
+      return res.status(501).json({ success: false, error: "Template 'copy' is not implemented yet. Only 'blank' is supported currently." });
+    }
+
+    // Create new empty .xlsx file at drive root
+    const url = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/root/children`;
+    const payload = {
+      name: fileName,
+      file: {},
+      "@microsoft.graph.conflictBehavior": "fail",
+    };
+    const data = await graphFetch(url, { method: "POST", body: JSON.stringify(payload) });
+
+    return res.json({
+      success: true,
+      message: `File '${fileName}' created successfully.`,
+      id: data?.id,
+      webUrl: data?.webUrl,
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ success: false, error: err.message });
+  }
+});
+
 // ---- Compatibility aliases (preserve legacy /api/* paths) ----
 // Health
 app.get("/api/health", (req, res) => res.redirect(307, "/health"));
@@ -359,6 +428,7 @@ app.post("/api/excel/write", (req, res) => res.redirect(307, "/excel/write"));
 app.post("/api/excel/delete", (req, res) => res.redirect(307, "/excel/delete"));
 app.post("/api/excel/create-sheet", (req, res) => res.redirect(307, "/excel/create-sheet"));
 app.post("/api/excel/delete-sheet", (req, res) => res.redirect(307, "/excel/delete-sheet"));
+app.post("/api/excel/create-file", (req, res) => res.redirect(307, "/excel/create-file"));
 
 // POST /excel/write
 // Body: { driveName, itemName, range (may be Sheet!A1:B2), values (2D array) }

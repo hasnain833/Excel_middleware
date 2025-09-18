@@ -204,6 +204,38 @@
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
       }
+    },
+    "/excel/create-file": {
+      "post": {
+        "summary": "Create a new Excel file in a drive",
+        "operationId": "createExcelFile",
+        "description": "Creates a new empty .xlsx file at the root of the resolved drive. Uses the same drive auto-selection behavior as other endpoints. Supports per-request site overrides.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateFileRequest" },
+              "examples": {
+                "blank": {
+                  "summary": "Create a blank workbook with auto-select drive",
+                  "value": { "siteUrl": "https://yourtenant.sharepoint.com/sites/MySite", "fileName": "NewReport.xlsx" }
+                },
+                "explicitDrive": {
+                  "summary": "Create in specific drive",
+                  "value": { "siteUrl": "https://yourtenant.sharepoint.com/sites/MySite", "driveName": "Documents", "fileName": "Quarterly.xlsx" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "File created successfully", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateFileSuccess" } } } },
+          "400": { "description": "Bad request (e.g., fileName missing or not .xlsx, invalid template)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "404": { "description": "Drive not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "409": { "description": "File already exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
     }
   },
   "components": {
@@ -405,6 +437,29 @@
           "data": { "type": "object", "additionalProperties": true, "nullable": true }
         },
         "required": ["success"]
+      },
+      "CreateFileRequest": {
+        "type": "object",
+        "properties": {
+          "siteId": { "type": "string" },
+          "siteUrl": { "type": "string" },
+          "sharepointHostname": { "type": "string" },
+          "sharepointSiteName": { "type": "string" },
+          "driveName": { "type": "string" },
+          "fileName": { "type": "string", "description": "Must end with .xlsx" },
+          "template": { "type": "string", "enum": ["blank", "copy"], "default": "blank" }
+        },
+        "required": ["fileName"]
+      },
+      "CreateFileSuccess": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "message": { "type": "string" },
+          "id": { "type": "string" },
+          "webUrl": { "type": "string" }
+        },
+        "required": ["success", "message"]
       }
     }
   }
