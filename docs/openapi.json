@@ -81,7 +81,7 @@
       "post": {
         "summary": "Read a range from a worksheet",
         "operationId": "readExcelRange",
-        "description": "Provide driveName/itemName and a range. The range may be sheet-qualified (e.g., 'Sheet1!A1:D10'). If sheetName is not provided explicitly, it must be included in the range prefix.",
+        "description": "Provide driveName/itemName. sheetName and range are optional. If sheetName is omitted and multiple sheets exist, 400 with availableSheets. If range is omitted, return usedRange values. Range may be sheet-qualified (e.g., 'Sheet1!A1:D10').",
         "requestBody": {
           "required": true,
           "content": {
@@ -92,6 +92,10 @@
                   "summary": "Using driveName/itemName and sheet-qualified range",
                   "value": { "driveName": "Shared Documents", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:D10" }
                 },
+                "noRangeSingleSheet": {
+                  "summary": "No range, single sheet auto-selected",
+                  "value": { "driveName": "Shared Documents", "itemName": "TestWorkbook.xlsx" }
+                },
                 "withSiteUrl": {
                   "summary": "Provide siteUrl to override env config",
                   "value": { "siteUrl": "https://yourtenant.sharepoint.com/sites/Finance", "driveName": "Documents", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:D10" }
@@ -101,9 +105,9 @@
           }
         },
         "responses": {
-          "200": { "description": "Read success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RangeReadSuccess" } } } },
-          "400": { "description": "Bad request (missing fields)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "404": { "description": "Drive or file not found (returns available names in error message)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "200": { "description": "Read success (range response or usedRange values)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadSuccess" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "404": { "description": "Drive/file/sheet not found (may include available names)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
       }
@@ -112,7 +116,7 @@
       "post": {
         "summary": "Write values to a range in a worksheet",
         "operationId": "writeExcelRange",
-        "description": "Provide driveName/itemName and a range. The range may be sheet-qualified (e.g., 'Sheet1!A1:B2'). If sheetName is not provided explicitly, include it in the range prefix.",
+        "description": "Provide driveName/itemName and values. sheetName and range are optional. Behavior: if sheetName is omitted and only one sheet exists, it will be used; if multiple sheets exist, a 400 with availableSheets is returned. If range is omitted, values are appended after the sheet's usedRange.",
         "requestBody": {
           "required": true,
           "content": {
@@ -123,6 +127,10 @@
                   "summary": "Using driveName/itemName and sheet-qualified range",
                   "value": { "driveName": "Shared Documents", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:B2", "values": [["Date", "Amount"], ["2025-09-01", 100]] }
                 },
+                "appendAuto": {
+                  "summary": "No range provided; values appended after usedRange",
+                  "value": { "driveName": "Shared Documents", "itemName": "TestWorkbook.xlsx", "sheetName": "Sheet1", "values": [["Date","Item","Amount"],["2025-09-01","Sample",100]] }
+                },
                 "withSiteId": {
                   "summary": "Provide siteId to override env config",
                   "value": { "siteId": "your-site-id", "driveName": "Documents", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:B2", "values": [["Date", "Amount"], ["2025-09-01", 100]] }
@@ -132,9 +140,9 @@
           }
         },
         "responses": {
-          "200": { "description": "Write success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RangeWriteSuccess" } } } },
-          "400": { "description": "Bad request (missing fields)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "404": { "description": "Drive or file not found (returns available names in error message)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "200": { "description": "Write success (range patch or appended)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WriteSuccess" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "404": { "description": "Drive/file/sheet not found (may include available names)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
       }
@@ -151,7 +159,7 @@
         },
         "responses": {
           "200": { "description": "Create sheet success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or missing applyTo)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
           "404": { "description": "Drive or file not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
@@ -168,9 +176,9 @@
           }
         },
         "responses": {
-          "200": { "description": "Clear success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "404": { "description": "Drive or file not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "200": { "description": "Clear success (range only or entire usedRange when applyTo=all)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteSuccess" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or missing applyTo)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "404": { "description": "Drive/file/sheet not found (may include available names)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
       }
@@ -217,6 +225,17 @@
         },
         "required": ["success", "error"]
       },
+      "ErrorWithAvailableSheets": {
+        "allOf": [
+          { "$ref": "#/components/schemas/EnvelopeError" },
+          {
+            "type": "object",
+            "properties": {
+              "availableSheets": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        ]
+      },
       "HealthSuccess": {
         "type": "object",
         "properties": {
@@ -247,7 +266,7 @@
 
       "ReadRequest": {
         "type": "object",
-        "description": "Provide driveName/itemName. Worksheet can be specified via worksheetName or as a Sheet! prefix in range.",
+        "description": "Provide driveName/itemName. sheetName and range are optional. Worksheet can be specified via sheetName or as a Sheet! prefix in range.",
         "properties": {
           "siteId": { "type": "string" },
           "siteUrl": { "type": "string" },
@@ -259,7 +278,7 @@
           "sheetName": { "type": "string" },
           "range": { "type": "string" }
         },
-        "required": ["driveName", "itemName", "range"]
+        "required": ["driveName", "itemName"]
       },
       "WriteRequest": {
         "type": "object",
@@ -274,7 +293,7 @@
           "range": { "type": "string" },
           "values": { "type": "array", "items": { "type": "array", "items": {} } }
         },
-        "required": ["driveName", "itemName", "range", "values"]
+      "required": ["driveName", "itemName", "values"]
       },
       "CreateSheetRequest": {
         "type": "object",
@@ -300,9 +319,9 @@
           "itemName": { "type": "string" },
           "sheetName": { "type": "string" },
           "range": { "type": "string" },
-          "applyTo": { "type": "string", "default": "contents", "description": "One of: contents, formats, or hyperLinks" }
+          "applyTo": { "type": "string", "default": "contents", "description": "One of: contents, formats, hyperLinks, or 'all' to clear entire usedRange when range is omitted" }
         },
-        "required": ["driveName", "itemName", "sheetName", "range"]
+        "required": ["driveName", "itemName"]
       },
       "DeleteSheetRequest": {
         "type": "object",
@@ -341,14 +360,46 @@
         },
         "additionalProperties": true
       },
-      "RangeReadSuccess": {
+      "MessageValues": {
         "type": "object",
-        "properties": { "success": { "type": "boolean", "const": true }, "data": { "$ref": "#/components/schemas/RangeObject" } },
+        "properties": {
+          "message": { "type": "string" },
+          "values": { "type": "array", "items": { "type": "array", "items": {} } }
+        },
+        "required": ["message", "values"]
+      },
+      "ReadSuccess": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "data": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/RangeObject" },
+              { "$ref": "#/components/schemas/MessageValues" }
+            ]
+          }
+        },
         "required": ["success", "data"]
       },
-      "RangeWriteSuccess": {
+      "WriteSuccess": {
         "type": "object",
-        "properties": { "success": { "type": "boolean", "const": true }, "data": { "description": "Graph range PATCH response", "nullable": true } },
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "data": {
+            "oneOf": [
+              { "type": "object", "description": "Graph range PATCH response", "additionalProperties": true },
+              { "type": "object", "properties": { "message": { "type": "string" }, "writtenTo": { "type": "string" } }, "required": ["message", "writtenTo"] }
+            ]
+          }
+        },
+        "required": ["success"]
+      },
+      "DeleteSuccess": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "data": { "type": "object", "additionalProperties": true, "nullable": true }
+        },
         "required": ["success"]
       }
     }

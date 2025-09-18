@@ -281,11 +281,26 @@ app.post("/excel/read", async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     let { driveName, itemName, sheetName, range } = req.body || {};
-    if (!driveName || !itemName) {
-      return res.status(400).json({ success: false, error: "Missing body. Required: driveName, itemName" });
+    if (!itemName) {
+      return res.status(400).json({ success: false, error: "Missing body. Required: itemName (driveName optional if only one drive)." });
     }
 
-    const driveId = await resolveDriveId(driveName, ctx);
+    // Drive auto-selection logic
+    let driveId;
+    if (!driveName) {
+      const drives = await listDrives(ctx);
+      const availableDrives = drives.map((d) => d.name);
+      if (drives.length === 1) {
+        driveId = drives[0].id;
+        driveName = drives[0].name;
+        console.log(`[Debug] Auto-selected drive: ${driveName} (${driveId})`);
+      } else {
+        console.log(`[Debug] Multiple drives found, cannot auto-select. Available: ${availableDrives.join(', ')}`);
+        return res.status(400).json({ success: false, error: "Multiple drives found. Please specify driveName.", availableDrives });
+      }
+    } else {
+      driveId = await resolveDriveId(driveName, ctx);
+    }
     const itemId = await resolveItemId(driveId, itemName);
 
     // Support Sheet!A1:B2
@@ -352,8 +367,8 @@ app.post("/excel/write", async (req, res) => {
     const ctx = getSiteContext(req);
     let { driveName, itemName, sheetName, range, values } = req.body || {};
 
-    if (!driveName || !itemName || !Array.isArray(values)) {
-      return res.status(400).json({ success: false, error: "Missing body. Required: driveName, itemName, values(2D array)" });
+    if (!itemName || !Array.isArray(values)) {
+      return res.status(400).json({ success: false, error: "Missing body. Required: itemName and values (2D array). driveName optional if only one drive." });
     }
 
     // Parse possible Sheet!A1:B2
@@ -362,8 +377,22 @@ app.post("/excel/write", async (req, res) => {
       if (parsed.sheetName && !sheetName) sheetName = parsed.sheetName;
       range = parsed.address;
     }
-
-    const driveId = await resolveDriveId(driveName, ctx);
+    // Drive auto-selection logic
+    let driveId;
+    if (!driveName) {
+      const drives = await listDrives(ctx);
+      const availableDrives = drives.map((d) => d.name);
+      if (drives.length === 1) {
+        driveId = drives[0].id;
+        driveName = drives[0].name;
+        console.log(`[Debug] Auto-selected drive: ${driveName} (${driveId})`);
+      } else {
+        console.log(`[Debug] Multiple drives found, cannot auto-select. Available: ${availableDrives.join(', ')}`);
+        return res.status(400).json({ success: false, error: "Multiple drives found. Please specify driveName.", availableDrives });
+      }
+    } else {
+      driveId = await resolveDriveId(driveName, ctx);
+    }
     const itemId = await resolveItemId(driveId, itemName);
 
     // Determine sheetName dynamically
@@ -451,8 +480,8 @@ app.post("/excel/delete", async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     let { driveName, itemName, sheetName, range, applyTo = "contents" } = req.body || {};
-    if (!driveName || !itemName) {
-      return res.status(400).json({ success: false, error: "Missing body. Required: driveName, itemName" });
+    if (!itemName) {
+      return res.status(400).json({ success: false, error: "Missing body. Required: itemName (driveName optional if only one drive)." });
     }
 
     // Parse possible Sheet!A1:B2
@@ -461,8 +490,22 @@ app.post("/excel/delete", async (req, res) => {
       if (parsed.sheetName && !sheetName) sheetName = parsed.sheetName;
       range = parsed.address;
     }
-
-    const driveId = await resolveDriveId(driveName, ctx);
+    // Drive auto-selection logic
+    let driveId;
+    if (!driveName) {
+      const drives = await listDrives(ctx);
+      const availableDrives = drives.map((d) => d.name);
+      if (drives.length === 1) {
+        driveId = drives[0].id;
+        driveName = drives[0].name;
+        console.log(`[Debug] Auto-selected drive: ${driveName} (${driveId})`);
+      } else {
+        console.log(`[Debug] Multiple drives found, cannot auto-select. Available: ${availableDrives.join(', ')}`);
+        return res.status(400).json({ success: false, error: "Multiple drives found. Please specify driveName.", availableDrives });
+      }
+    } else {
+      driveId = await resolveDriveId(driveName, ctx);
+    }
     const itemId = await resolveItemId(driveId, itemName);
     const sheets = await listWorksheets(driveId, itemId);
     const availableSheets = sheets.map((s) => s.name);
@@ -545,10 +588,22 @@ app.get("/list-items", async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     const { driveName } = req.query || {};
+    // Drive auto-selection logic for list-items
+    let driveId;
     if (!driveName) {
-      return res.status(400).json({ success: false, error: "driveName is required" });
+      const drives = await listDrives(ctx);
+      const availableDrives = drives.map((d) => d.name);
+      if (drives.length === 1) {
+        driveId = drives[0].id;
+        const autoDriveName = drives[0].name;
+        console.log(`[Debug] /list-items auto-selected drive: ${autoDriveName} (${driveId})`);
+      } else {
+        console.log(`[Debug] /list-items multiple drives found. Available: ${availableDrives.join(', ')}`);
+        return res.status(400).json({ success: false, error: "Multiple drives found. Please specify driveName.", availableDrives });
+      }
+    } else {
+      driveId = await resolveDriveId(driveName, ctx);
     }
-    const driveId = await resolveDriveId(driveName, ctx);
     const items = await listItems(driveId);
     return res.json({ success: true, items });
   } catch (err) {
