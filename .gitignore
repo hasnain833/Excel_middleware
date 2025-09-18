@@ -118,6 +118,3 @@ Thumbs.db
 .azure/
 
 .vercel
-
-# Ignore docs folder
-docs/
