@@ -1,0 +1,411 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Excel GPT Middleware API",
+    "version": "1.0.0",
+    "description": "Serverless Express endpoints that interact with Microsoft Graph Excel as a middleware.\nNotes:\n- Success envelope is not fully uniform across endpoints: some return a 'data' field while list endpoints return 'drives'/'items' directly. Errors consistently use { success: false, error }.\n- SharePoint site resolution supports per-request overrides via query/body. See request models for supported fields.\n- Name matching for 'driveName' and 'itemName' is case-insensitive. Ranges may be sheet-qualified (e.g., 'Sheet1!A1:D10')."
+  },
+  "servers": [
+    { "url": "https://excel-middleware.vercel.app/", "description": "Production" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthSuccess" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/list-drives": {
+      "get": {
+        "summary": "List drives in the resolved SharePoint site",
+        "operationId": "listDrives",
+        "parameters": [
+          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
+          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override (e.g., https://tenant.sharepoint.com/sites/YourSite)" },
+          { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
+          { "in": "query", "name": "sharepointSiteName", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., YourSite)" }
+        ],
+        "responses": {
+          "200": {
+            "description": "List success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListDrivesSuccess" }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or Graph error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } }
+          }
+        }
+      }
+    },
+    "/list-items": {
+      "get": {
+        "summary": "List items in a drive",
+        "operationId": "listItems",
+        "parameters": [
+          { "in": "query", "name": "driveName", "schema": { "type": "string" }, "required": false, "description": "Optional drive name. If omitted and a single drive exists, it is auto-selected; if multiple exist, 400 with availableDrives is returned." },
+          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
+          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override (e.g., https://tenant.sharepoint.com/sites/YourSite)" },
+          { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
+          { "in": "query", "name": "sharepointSiteName", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., YourSite)" }
+        ],
+        "responses": {
+          "200": {
+            "description": "List success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListItemsSuccess" }
+              }
+            }
+          },
+          "400": { "description": "Multiple drives exist and driveName not specified", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } } } },
+          "404": { "description": "Drive not found (returns available names in error message)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    },
+    "/excel/read": {
+      "post": {
+        "summary": "Read a range from a worksheet",
+        "operationId": "readExcelRange",
+        "description": "Read a range or the usedRange. Provide itemName; driveName optional if a single drive exists (auto-selected). sheetName optional; if multiple sheets and omitted, 400 with availableSheets. Range may be 'Sheet!A1:B2'.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ReadRequest" },
+              "examples": {
+                "byNames": {
+                  "summary": "Using driveName/itemName and sheet-qualified range",
+                  "value": { "driveName": "Shared Documents", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:D10" }
+                },
+                "noRangeSingleSheet": {
+                  "summary": "No range, single sheet auto-selected",
+                  "value": { "itemName": "TestWorkbook.xlsx" }
+                },
+                "withSiteUrl": {
+                  "summary": "Provide siteUrl to override env config",
+                  "value": { "siteUrl": "https://yourtenant.sharepoint.com/sites/Finance", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:D10" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Read success (range response or usedRange values)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadSuccess" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or multiple drives without driveName)", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
+          "404": { "description": "Drive/file/sheet not found (may include available names)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    },
+    "/excel/write": {
+      "post": {
+        "summary": "Write values to a range in a worksheet",
+        "operationId": "writeExcelRange",
+        "description": "Write to a range or append after usedRange. Provide itemName and values (2D). driveName optional if a single drive exists (auto-selected). sheetName optional; if multiple sheets and omitted, 400 with availableSheets.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WriteRequest" },
+              "examples": {
+                "byNames": {
+                  "summary": "Using driveName/itemName and sheet-qualified range",
+                  "value": { "driveName": "Shared Documents", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:B2", "values": [["Date", "Amount"], ["2025-09-01", 100]] }
+                },
+                "appendAuto": {
+                  "summary": "No range provided; values appended after usedRange",
+                  "value": { "driveName": "Shared Documents", "itemName": "TestWorkbook.xlsx", "sheetName": "Sheet1", "values": [["Date","Item","Amount"],["2025-09-01","Sample",100]] }
+                },
+                "autoSelectDrive": {
+                  "summary": "Omit driveName; auto-select when only one drive exists",
+                  "value": { "itemName": "TestWorkbook.xlsx", "sheetName": "Sheet1", "values": [["North", 10]] }
+                },
+                "withSiteId": {
+                  "summary": "Provide siteId to override env config",
+                  "value": { "siteId": "your-site-id", "itemName": "TestWorkbook.xlsx", "range": "Sheet1!A1:B2", "values": [["Date", "Amount"], ["2025-09-01", 100]] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Write success (range patch or appended)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WriteSuccess" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or multiple drives without driveName)", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
+          "404": { "description": "Drive/file/sheet not found (may include available names)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    },
+    "/excel/create-sheet": {
+      "post": {
+        "summary": "Create a worksheet in a workbook",
+        "operationId": "createWorksheet",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateSheetRequest" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Create sheet success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or missing applyTo)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "404": { "description": "Drive or file not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    },
+    "/excel/delete": {
+      "post": {
+        "summary": "Clear data in a range",
+        "operationId": "clearRange",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/DeleteRequest" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Clear success (range only or entire usedRange when applyTo=all)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteSuccess" } } } },
+          "400": { "description": "Bad request (e.g., multiple sheets without sheetName or multiple drives without driveName or missing applyTo)", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
+          "404": { "description": "Drive/file/sheet not found (may include available names)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableSheets" } } } },
+          "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    },
+    "/excel/delete-sheet": {
+      "post": {
+        "summary": "Delete a worksheet by name",
+        "operationId": "deleteWorksheet",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/DeleteSheetRequest" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Delete sheet success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccess" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "404": { "description": "Worksheet not found (returns available sheet names in error message)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EnvelopeSuccess": {
+        "type": "object",
+        "properties": { "success": { "type": "boolean", "const": true } },
+        "required": ["success"]
+      },
+      "EnvelopeSuccessWithData": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "data": { "description": "Response payload from the Graph API", "nullable": true }
+        },
+        "required": ["success"]
+      },
+      "EnvelopeError": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": false },
+          "error": { "type": "string" }
+        },
+        "required": ["success", "error"]
+      },
+      "ErrorWithAvailableSheets": {
+        "allOf": [
+          { "$ref": "#/components/schemas/EnvelopeError" },
+          {
+            "type": "object",
+            "properties": {
+              "availableSheets": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        ]
+      },
+      "HealthSuccess": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "data": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "example": "ok" },
+              "time": { "type": "string", "format": "date-time" }
+            },
+            "required": ["status", "time"]
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "Drive": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" } }, "required": ["id", "name"] },
+      "Item": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" } }, "required": ["id", "name"] },
+      "ListDrivesSuccess": {
+        "type": "object",
+        "properties": { "success": { "type": "boolean", "const": true }, "drives": { "type": "array", "items": { "$ref": "#\/components\/schemas\/Drive" } } },
+        "required": ["success", "drives"]
+      },
+      "ListItemsSuccess": {
+        "type": "object",
+        "properties": { "success": { "type": "boolean", "const": true }, "items": { "type": "array", "items": { "$ref": "#\/components\/schemas\/Item" } } },
+        "required": ["success", "items"]
+      },
+
+      "ReadRequest": {
+        "type": "object",
+        "description": "Provide itemName; driveName is optional if only one drive exists (auto-selected). sheetName and range are optional. Worksheet can be specified via sheetName or as a Sheet! prefix in range.",
+        "properties": {
+          "siteId": { "type": "string" },
+          "siteUrl": { "type": "string" },
+          "sharepointHostname": { "type": "string" },
+          "sharepointSiteName": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" },
+          "worksheetName": { "type": "string", "deprecated": true, "description": "Use 'sheetName' instead." },
+          "sheetName": { "type": "string" },
+          "range": { "type": "string" }
+        },
+        "required": ["itemName"]
+      },
+      "WriteRequest": {
+        "type": "object",
+        "properties": {
+          "siteId": { "type": "string" },
+          "siteUrl": { "type": "string" },
+          "sharepointHostname": { "type": "string" },
+          "sharepointSiteName": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" },
+          "sheetName": { "type": "string" },
+          "range": { "type": "string" },
+          "values": { "type": "array", "description": "2D array of rows to write, e.g., [[\"Header1\",\"Header2\"],[\"Row1\",\"Row2\"]]", "items": { "type": "array", "items": {} } }
+        },
+      "required": ["itemName", "values"]
+      },
+      "CreateSheetRequest": {
+        "type": "object",
+        "properties": {
+          "siteId": { "type": "string" },
+          "siteUrl": { "type": "string" },
+          "sharepointHostname": { "type": "string" },
+          "sharepointSiteName": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "required": ["driveName", "itemName", "name"]
+      },
+      "DeleteRequest": {
+        "type": "object",
+        "properties": {
+          "siteId": { "type": "string" },
+          "siteUrl": { "type": "string" },
+          "sharepointHostname": { "type": "string" },
+          "sharepointSiteName": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" },
+          "sheetName": { "type": "string" },
+          "range": { "type": "string" },
+          "applyTo": { "type": "string", "default": "contents", "description": "One of: contents, formats, hyperLinks, or 'all' to clear entire usedRange when range is omitted" }
+        },
+        "required": ["itemName"]
+      },
+      "DeleteSheetRequest": {
+        "type": "object",
+        "properties": {
+          "siteId": { "type": "string" },
+          "siteUrl": { "type": "string" },
+          "sharepointHostname": { "type": "string" },
+          "sharepointSiteName": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" },
+          "sheetName": { "type": "string" }
+        },
+        "required": ["driveName", "itemName", "sheetName"]
+      },
+
+      "RangeObject": {
+        "type": "object",
+        "description": "Subset of Microsoft Graph range resource. Actual payload may include more fields.",
+        "properties": {
+          "address": { "type": "string" },
+          "addressLocal": { "type": "string" },
+          "cellCount": { "type": "integer" },
+          "columnCount": { "type": "integer" },
+          "columnHidden": { "type": "boolean" },
+          "columnIndex": { "type": "integer" },
+          "formulas": {},
+          "formulasLocal": {},
+          "formulasR1C1": {},
+          "hidden": { "type": "boolean" },
+          "numberFormat": {},
+          "rowCount": { "type": "integer" },
+          "rowHidden": { "type": "boolean" },
+          "rowIndex": { "type": "integer" },
+          "text": {},
+          "values": { "type": "array", "items": { "type": "array", "items": {} } }
+        },
+        "additionalProperties": true
+      },
+      "MessageValues": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" },
+          "values": { "type": "array", "items": { "type": "array", "items": {} } }
+        },
+        "required": ["message", "values"]
+      },
+      "ReadSuccess": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "data": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/RangeObject" },
+              { "$ref": "#/components/schemas/MessageValues" }
+            ]
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "WriteSuccess": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "data": {
+            "oneOf": [
+              { "type": "object", "description": "Graph range PATCH response", "additionalProperties": true },
+              { "type": "object", "properties": { "message": { "type": "string" }, "writtenTo": { "type": "string" } }, "required": ["message", "writtenTo"] }
+            ]
+          }
+        },
+        "required": ["success"]
+      },
+      "DeleteSuccess": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "data": { "type": "object", "additionalProperties": true, "nullable": true }
+        },
+        "required": ["success"]
+      }
+    }
+  }
+}
