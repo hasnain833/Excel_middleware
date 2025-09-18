@@ -482,5 +482,12 @@ app.get("/list-items", async (req, res) => {
 });
 
 // Important for Vercel: export the app as default
-export default app;
+import { createServer } from "http";
+
+// Convert Express app into a request handler for Vercel
+export default function handler(req, res) {
+  app(req, res);
+}
+
+// export default app;
 
