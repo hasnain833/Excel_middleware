@@ -236,6 +236,38 @@
           "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
         }
       }
+    },
+    "/excel/delete-file": {
+      "post": {
+        "summary": "Delete an Excel file from a drive",
+        "operationId": "deleteExcelFile",
+        "description": "Deletes an existing workbook (item) from the root of the resolved drive. Uses the same drive auto-selection and site override behavior as other endpoints.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DeleteFileRequest" },
+              "examples": {
+                "explicitDrive": {
+                  "summary": "Delete a file in a specific drive",
+                  "value": { "siteUrl": "https://yourtenant.sharepoint.com/sites/MySite", "driveName": "Documents", "itemName": "OldReport.xlsx" }
+                },
+                "autoDrive": {
+                  "summary": "Auto-select drive when only one exists",
+                  "value": { "siteUrl": "https://yourtenant.sharepoint.com/sites/MySite", "itemName": "OldReport.xlsx" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "File deleted successfully", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteFileSuccess" } } } },
+          "400": { "description": "Bad request (e.g., itemName missing)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "404": { "description": "Drive or file not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "409": { "description": "Conflict (rare). For example, file locked or conflicting operation.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
     }
   },
   "components": {
@@ -458,6 +490,26 @@
           "message": { "type": "string" },
           "id": { "type": "string" },
           "webUrl": { "type": "string" }
+        },
+        "required": ["success", "message"]
+      },
+      "DeleteFileRequest": {
+        "type": "object",
+        "properties": {
+          "siteId": { "type": "string" },
+          "siteUrl": { "type": "string" },
+          "sharepointHostname": { "type": "string" },
+          "sharepointSiteName": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" }
+        },
+        "required": ["itemName"]
+      },
+      "DeleteFileSuccess": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "message": { "type": "string" }
         },
         "required": ["success", "message"]
       }

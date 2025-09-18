@@ -17,6 +17,7 @@ This guide explains how to use the Excel GPT Middleware to interact with SharePo
 - POST `/excel/write`
 - POST `/excel/delete`
 - POST `/excel/create-file`
+- POST `/excel/delete-file`
 
 Compatibility aliases are also available under `/api/*` (e.g., `/api/excel/read` => `/excel/read`).
 
@@ -44,6 +45,7 @@ GET /list-drives
 }
 ```
 
+ 
 ### 2) List Items
 
 - Purpose: List files/folders at the root of a drive.
@@ -308,6 +310,62 @@ POST /excel/create-file
 {
   "success": false,
   "error": "File already exists."
+}
+```
+  - Multiple drives and driveName not specified
+```json
+{
+  "success": false,
+  "error": "Multiple drives found. Please specify driveName.",
+  "availableDrives": ["Documents", "Shared Documents"]
+}
+```
+
+### 7) Delete File
+
+- Purpose: Delete an existing Excel workbook from a drive.
+- Request:
+  - Method: POST
+  - URL: `/excel/delete-file`
+  - Body fields:
+    - `itemName` (required; the workbook filename)
+    - `driveName` (optional if only one drive)
+    - Site context overrides supported: `siteId`, `siteUrl`, `hostname`/`sharepointHostname`, `siteName`/`sharepointSiteName`
+- Behavior:
+  - If `driveName` is omitted and only one drive exists → auto-selected.
+  - If multiple drives exist and `driveName` is omitted → 400 with `availableDrives`.
+  - If the specified file does not exist in the root of the drive → 404 with `{ success: false, error: "File not found." }`.
+- Examples:
+  - Auto-select drive (single-drive tenant):
+```json
+POST /excel/delete-file
+{
+  "siteUrl": "https://yourtenant.sharepoint.com/sites/MySite",
+  "itemName": "OldReport.xlsx"
+}
+```
+  - Explicit drive:
+```json
+POST /excel/delete-file
+{
+  "siteUrl": "https://yourtenant.sharepoint.com/sites/MySite",
+  "driveName": "Documents",
+  "itemName": "OldReport.xlsx"
+}
+```
+- Sample Success Response:
+```json
+{
+  "success": true,
+  "message": "File 'OldReport.xlsx' deleted successfully."
+}
+```
+- Error Examples:
+  - File not found
+```json
+{
+  "success": false,
+  "error": "File not found."
 }
 ```
   - Multiple drives and driveName not specified

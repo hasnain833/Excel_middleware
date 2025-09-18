@@ -345,6 +345,57 @@ app.post("/excel/read", async (req, res) => {
   }
 });
 
+// POST /excel/delete-file
+// Body: { siteUrl?, driveName?, itemName }
+app.post("/excel/delete-file", async (req, res) => {
+  try {
+    const ctx = getSiteContext(req);
+    let { driveName, itemName } = req.body || {};
+
+    if (!itemName) {
+      return res.status(400).json({ success: false, error: "Missing body. Required: itemName (the workbook filename)." });
+    }
+
+    // Drive auto-selection logic (consistent with other endpoints)
+    let driveId;
+    if (!driveName) {
+      const drives = await listDrives(ctx);
+      const availableDrives = drives.map((d) => d.name);
+      if (drives.length === 1) {
+        driveId = drives[0].id;
+        driveName = drives[0].name;
+        console.log(`[Debug] Auto-selected drive: ${driveName} (${driveId})`);
+      } else {
+        console.log(`[Debug] Multiple drives found, cannot auto-select. Available: ${availableDrives.join(', ')}`);
+        return res.status(400).json({ success: false, error: "Multiple drives found. Please specify driveName.", availableDrives });
+      }
+    } else {
+      driveId = await resolveDriveId(driveName, ctx);
+    }
+
+    console.log(`[Debug] Deleting file: ${itemName} from drive ${driveName || '(auto-selected)'}`);
+
+    // Resolve item and delete
+    let itemId;
+    try {
+      itemId = await resolveItemId(driveId, itemName);
+    } catch (e) {
+      if (e && e.status === 404) {
+        return res.status(404).json({ success: false, error: "File not found." });
+      }
+      throw e;
+    }
+
+    const url = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`;
+    await graphFetch(url, { method: "DELETE" });
+
+    return res.json({ success: true, message: `File '${itemName}' deleted successfully.` });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ success: false, error: err.message });
+  }
+});
+
 // POST /excel/create-file
 // Body: { siteUrl?, driveName?, fileName (must end with .xlsx), template? ("blank" | "copy") }
 app.post("/excel/create-file", async (req, res) => {
@@ -429,6 +480,7 @@ app.post("/api/excel/delete", (req, res) => res.redirect(307, "/excel/delete"));
 app.post("/api/excel/create-sheet", (req, res) => res.redirect(307, "/excel/create-sheet"));
 app.post("/api/excel/delete-sheet", (req, res) => res.redirect(307, "/excel/delete-sheet"));
 app.post("/api/excel/create-file", (req, res) => res.redirect(307, "/excel/create-file"));
+app.post("/api/excel/delete-file", (req, res) => res.redirect(307, "/excel/delete-file"));
 
 // POST /excel/write
 // Body: { driveName, itemName, range (may be Sheet!A1:B2), values (2D array) }
