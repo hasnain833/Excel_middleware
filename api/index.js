@@ -479,15 +479,12 @@ app.post("/api/excel/write", (req, res) => res.redirect(307, "/excel/write"));
 app.post("/api/excel/delete", (req, res) => res.redirect(307, "/excel/delete"));
 app.post("/api/excel/create-sheet", (req, res) => res.redirect(307, "/excel/create-sheet"));
 app.post("/api/excel/delete-sheet", (req, res) => res.redirect(307, "/excel/delete-sheet"));
-app.post("/api/excel/create-file", (req, res) => res.redirect(307, "/excel/create-file"));
-app.post("/api/excel/delete-file", (req, res) => res.redirect(307, "/excel/delete-file"));
-
 // POST /excel/write
 // Body: { driveName, itemName, range (may be Sheet!A1:B2), values (2D array) }
 app.post("/excel/write", async (req, res) => {
   try {
     const ctx = getSiteContext(req);
-    let { driveName, itemName, sheetName, range, values } = req.body || {};
+    let { driveName, itemName, sheetName, range, values, mode } = req.body || {};
 
     if (!itemName) {
       return res.status(400).json({
@@ -546,6 +543,15 @@ app.post("/excel/write", async (req, res) => {
       while (n > 0) { n--; s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26); }
       return s;
     };
+    // Helper to convert Excel column letters to number (1-based)
+    const colToNum = (letters) => {
+      let num = 0;
+      const up = String(letters || "A").toUpperCase();
+      for (let i = 0; i < up.length; i++) {
+        num = num * 26 + (up.charCodeAt(i) - 64);
+      }
+      return num || 1;
+    };
 
     if (range && range.trim().length > 0) {
       console.log(`[Debug] Writing to explicit range: ${sheetName}!${range}`);
@@ -554,14 +560,36 @@ app.post("/excel/write", async (req, res) => {
       return res.json({ success: true, data });
     }
 
-    // No range provided → append after used range
+    // No range provided → append either after last row (default) or after last column (when mode=append-column)
     const usedUrl = `${base}/worksheets('${encodeURIComponent(sheetName)}')/usedRange`;
     const used = await graphFetch(usedUrl, { method: "GET" });
+    const cols = Array.isArray(values[0]) ? values[0].length : 1;
+    const rows = Array.isArray(values) ? values.length : 1;
+
+    if (String(mode).toLowerCase() === "append-column") {
+      // Determine the next empty column to the right of the used range
+      const address = String(used?.address || "A1"); // e.g., Sheet!A1:C6 or A1:C6
+      const addr = address.includes("!") ? address.split("!")[1] : address;
+      const endCell = addr.includes(":") ? addr.split(":")[1] : addr; // e.g., C6
+      const endColLettersMatch = endCell.match(/[A-Z]+/i);
+      const lastColLetters = (endColLettersMatch ? endColLettersMatch[0] : "A").toUpperCase();
+      const startColNum = colToNum(lastColLetters) + 1;
+      const startCol = numToCol(startColNum);
+      const endCol = numToCol(startColNum + cols - 1);
+      const startRow = Number(used?.rowIndex ?? 0) + 1; // align with top of used range
+      const endRow = startRow + rows - 1;
+      const autoRange = `${startCol}${startRow}:${endCol}${endRow}`;
+      console.log(`[Debug] Appending data after column ${lastColLetters}`);
+      console.log(`[Debug] Auto range (append-column): ${sheetName}!${autoRange}`);
+      const url = `${base}/worksheets('${encodeURIComponent(sheetName)}')/range(address='${encodeURIComponent(autoRange)}')`;
+      const data = await graphFetch(url, { method: "PATCH", body: JSON.stringify({ values }) });
+      return res.json({ success: true, data: { message: `No range provided. Appending data after column ${lastColLetters}.`, writtenTo: `${autoRange}` } });
+    }
+
+    // Default behavior: append after the last used row
     const rowIndex = Number(used?.rowIndex ?? 0); // 0-based
     const rowCount = Number(used?.rowCount ?? 0);
     const nextRow = rowIndex + rowCount + 1; // Excel addresses are 1-based
-    const cols = Array.isArray(values[0]) ? values[0].length : 1;
-    const rows = Array.isArray(values) ? values.length : 1;
     const endCol = numToCol(cols);
     const endRow = nextRow + rows - 1;
     const autoRange = `A${nextRow}:${endCol}${endRow}`;
