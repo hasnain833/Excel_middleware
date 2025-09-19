@@ -2,6 +2,8 @@ import express from "express";
 import fetch from "node-fetch";
 import "dotenv/config";
 import { extractUserRole, requirePermission } from "./middleware/extractUserRole.js";
+import fs from "fs";
+import path from "path";
 
 // Serverless-compatible Express app for Vercel
 const app = express();
@@ -13,6 +15,19 @@ app.get("/health", (req, res) => {
     success: true,
     data: { status: "ok", time: new Date().toISOString() },
   });
+});
+
+// Serve OpenAPI spec for integration (e.g., Custom GPT)
+app.get("/openapi.json", (req, res) => {
+  try {
+    const specPath = path.join(process.cwd(), "docs", "openapi.json");
+    const raw = fs.readFileSync(specPath, "utf-8");
+    const json = JSON.parse(raw);
+    return res.status(200).json(json);
+  } catch (e) {
+    console.error("[OpenAPI] Failed to read docs/openapi.json:", e.message);
+    return res.status(500).json({ success: false, error: "OpenAPI spec not available" });
+  }
 });
 
 // Helper: get access token via client credentials
