@@ -1,6 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import "dotenv/config";
+import { extractUserRole, requirePermission } from "./middleware/extractUserRole.js";
 
 // Serverless-compatible Express app for Vercel
 const app = express();
@@ -347,7 +348,7 @@ app.post("/excel/read", async (req, res) => {
 
 // POST /excel/delete-file
 // Body: { siteUrl?, driveName?, itemName }
-app.post("/excel/delete-file", async (req, res) => {
+app.post("/excel/delete-file", extractUserRole, requirePermission('delete'), async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     let { driveName, itemName } = req.body || {};
@@ -398,7 +399,7 @@ app.post("/excel/delete-file", async (req, res) => {
 
 // POST /excel/create-file
 // Body: { siteUrl?, driveName?, fileName (must end with .xlsx), template? ("blank" | "copy") }
-app.post("/excel/create-file", async (req, res) => {
+app.post("/excel/create-file", extractUserRole, requirePermission('create'), async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     let { driveName, fileName, template = "blank" } = req.body || {};
@@ -484,7 +485,7 @@ app.post("/api/excel/delete-file", (req, res) => res.redirect(307, "/excel/delet
 
 // POST /excel/write
 // Body: { driveName, itemName, range (may be Sheet!A1:B2), values (2D array) }
-app.post("/excel/write", async (req, res) => {
+app.post("/excel/write", extractUserRole, requirePermission('write'), async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     let { driveName, itemName, sheetName, range, values } = req.body || {};
@@ -578,7 +579,7 @@ app.post("/excel/write", async (req, res) => {
 
 // POST /excel/create-sheet
 // Body: { driveName, itemName, name }
-app.post("/excel/create-sheet", async (req, res) => {
+app.post("/excel/create-sheet", extractUserRole, requirePermission('create'), async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     const { driveName, itemName, name } = req.body || {};
@@ -607,7 +608,7 @@ app.post("/excel/create-sheet", async (req, res) => {
 // POST /excel/delete
 // Clears data in a range
 // Body: { driveName, itemName, sheetName, range, applyTo? }
-app.post("/excel/delete", async (req, res) => {
+app.post("/excel/delete", extractUserRole, requirePermission('delete'), async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     let { driveName, itemName, sheetName, range, applyTo = "contents" } = req.body || {};
@@ -673,7 +674,7 @@ app.post("/excel/delete", async (req, res) => {
 
 // POST /excel/delete-sheet
 // Body: { driveName, itemName, sheetName }
-app.post("/excel/delete-sheet", async (req, res) => {
+app.post("/excel/delete-sheet", extractUserRole, requirePermission('delete'), async (req, res) => {
   try {
     const ctx = getSiteContext(req);
     const { driveName, itemName, sheetName } = req.body || {};
