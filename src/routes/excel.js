@@ -8,6 +8,8 @@ const router = express.Router();
 
 // Controllers
 const excelController = require('../controllers/excelController');
+const findReplaceController = require('../controllers/findReplaceController');
+const excelEngineController = require('../controllers/excelEngineController');
 
 // Middleware
 const { ensureAuthenticated, logAuthenticatedRequest } = require('../auth/middleware');
@@ -103,6 +105,99 @@ router.post('/batch',
  */
 router.get('/metadata', 
     excelController.getFileMetadata
+);
+
+/**
+ * @route GET /api/excel/search
+ * @desc Search for files recursively in all folders and subfolders
+ * @access Private
+ */
+router.get('/search', 
+    validateRequest('searchFiles', 'query'),
+    excelController.searchFiles
+);
+
+/**
+ * @route POST /api/excel/find-replace
+ * @desc Find and replace text in Excel files with intelligent scoping
+ * @access Private
+ */
+router.post('/find-replace', 
+    writeLimiter, // Apply stricter rate limiting for write operations
+    auditLogger.middleware(), // Log all find-replace operations
+    validateRequest('findReplace', 'body'),
+    findReplaceController.findReplace
+);
+
+/**
+ * @route POST /api/excel/search-text
+ * @desc Search for text in Excel files without replacement
+ * @access Private
+ */
+router.post('/search-text', 
+    validateRequest('searchText', 'body'),
+    findReplaceController.searchText
+);
+
+/**
+ * @route GET /api/excel/analyze-scope
+ * @desc Analyze Excel file structure for scope planning
+ * @access Private
+ */
+router.get('/analyze-scope', 
+    validateRequest('analyzeScope', 'query'),
+    findReplaceController.analyzeScope
+);
+
+/**
+ * @route POST /api/excel/format
+ * @desc Apply comprehensive Excel formatting, formulas, and advanced features
+ * @access Private
+ */
+router.post('/format', 
+    writeLimiter, // Apply stricter rate limiting for write operations
+    auditLogger.middleware(), // Log all formatting operations
+    validateRequest('excelFormat', 'body'),
+    excelEngineController.applyFormatting
+);
+
+/**
+ * @route POST /api/excel/validate-formula
+ * @desc Validate Excel formula syntax before insertion
+ * @access Private
+ */
+router.post('/validate-formula', 
+    validateRequest('validateFormula', 'body'),
+    excelEngineController.validateFormula
+);
+
+/**
+ * @route GET /api/excel/cell-info
+ * @desc Get comprehensive cell information (value, formula, formatting)
+ * @access Private
+ */
+router.get('/cell-info', 
+    validateRequest('cellInfo', 'query'),
+    excelEngineController.getCellInfo
+);
+
+/**
+ * @route GET /api/excel/functions
+ * @desc Get available Excel functions and formulas by category
+ * @access Private
+ */
+router.get('/functions', 
+    excelEngineController.getExcelFunctions
+);
+
+/**
+ * @route GET /api/excel/worksheet-info
+ * @desc Get worksheet structure and metadata
+ * @access Private
+ */
+router.get('/worksheet-info', 
+    validateRequest('worksheetInfo', 'query'),
+    excelEngineController.getWorksheetInfo
 );
 
 /**

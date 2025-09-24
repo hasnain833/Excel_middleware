@@ -16,6 +16,7 @@ const { generalLimiter } = require('./middleware/rateLimiter');
 
 // Import routes
 const excelRoutes = require('./routes/excel');
+const renameRoutes = require('./routes/rename');
 const healthRoutes = require('./routes/health');
 
 // Import services
@@ -112,6 +113,7 @@ class Server {
 
         // API routes
         this.app.use('/api/excel', excelRoutes);
+        this.app.use('/api/excel', renameRoutes);
 
         // Root endpoint
         this.app.get('/', (req, res) => {
@@ -174,6 +176,84 @@ class Server {
                         path: '/api/excel/batch',
                         description: 'Perform batch Excel operations',
                         body: ['operations']
+                    },
+                    renameFile: {
+                        method: 'POST',
+                        path: '/api/excel/rename-file',
+                        description: 'Rename an Excel file',
+                        body: ['driveId', 'itemId', 'newName']
+                    },
+                    renameFolder: {
+                        method: 'POST',
+                        path: '/api/excel/rename-folder',
+                        description: 'Rename a folder',
+                        body: ['driveId', 'folderId', 'newName']
+                    },
+                    renameSheet: {
+                        method: 'POST',
+                        path: '/api/excel/rename-sheet',
+                        description: 'Rename an Excel worksheet',
+                        body: ['driveId', 'itemId', 'oldSheetName', 'newSheetName']
+                    },
+                    renameSuggestions: {
+                        method: 'POST',
+                        path: '/api/excel/rename-suggestions',
+                        description: 'Get intelligent rename suggestions',
+                        body: ['driveId', 'oldTerm', 'newTerm']
+                    },
+                    batchRename: {
+                        method: 'POST',
+                        path: '/api/excel/batch-rename',
+                        description: 'Perform multiple rename operations',
+                        body: ['driveId', 'operations']
+                    },
+                    findReplace: {
+                        method: 'POST',
+                        path: '/api/excel/find-replace',
+                        description: 'Find and replace text in Excel files with intelligent scoping',
+                        body: ['driveId', 'itemId', 'searchTerm', 'replaceTerm', 'scope']
+                    },
+                    searchText: {
+                        method: 'POST',
+                        path: '/api/excel/search-text',
+                        description: 'Search for text in Excel files without replacement',
+                        body: ['driveId', 'itemId', 'searchTerm', 'scope']
+                    },
+                    analyzeScope: {
+                        method: 'GET',
+                        path: '/api/excel/analyze-scope',
+                        description: 'Analyze Excel file structure for scope planning',
+                        parameters: ['driveId', 'itemId']
+                    },
+                    format: {
+                        method: 'POST',
+                        path: '/api/excel/format',
+                        description: 'Apply comprehensive Excel formatting, formulas, and advanced features',
+                        body: ['driveId', 'itemId', 'sheetName', 'operations']
+                    },
+                    validateFormula: {
+                        method: 'POST',
+                        path: '/api/excel/validate-formula',
+                        description: 'Validate Excel formula syntax before insertion',
+                        body: ['driveId', 'itemId', 'sheetName', 'formula']
+                    },
+                    cellInfo: {
+                        method: 'GET',
+                        path: '/api/excel/cell-info',
+                        description: 'Get comprehensive cell information (value, formula, formatting)',
+                        parameters: ['driveId', 'itemId', 'sheetName', 'cellAddress']
+                    },
+                    functions: {
+                        method: 'GET',
+                        path: '/api/excel/functions',
+                        description: 'Get available Excel functions and formulas by category',
+                        parameters: ['category (optional)']
+                    },
+                    worksheetInfo: {
+                        method: 'GET',
+                        path: '/api/excel/worksheet-info',
+                        description: 'Get worksheet structure and metadata',
+                        parameters: ['driveId', 'itemId', 'sheetName (optional)']
                     }
                 },
                 authentication: {

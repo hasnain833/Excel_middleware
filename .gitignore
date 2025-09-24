@@ -22,6 +22,14 @@ lerna-debug.log*
 # Documentation
 docs/
 
+# Test files
+test/
+*test.js
+*-test.js
+comprehensive-test.js
+simple-test.js
+minimal-server.js
+
 # Runtime data
 pids
 *.pid

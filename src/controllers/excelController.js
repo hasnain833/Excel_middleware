@@ -1,10 +1,13 @@
 // Excel Controller Handles HTTP requests for Excel operations
 
 const excelService = require("../services/excelService");
-const resolverService = require("../services/resolverService");
-const auditService = require("../services/auditService");
-const logger = require("../config/logger");
-const { catchAsync } = require("../middleware/errorHandler");
+const resolverService = require('../services/resolverService');
+const nameResolverService = require('../services/nameResolverService');
+const nameResolutionMixin = require('../middleware/nameResolutionMixin');
+const auditService = require('../services/auditService');
+const logger = require('../config/logger');
+const { catchAsync } = require('../middleware/errorHandler');
+const { AppError } = require('../middleware/errorHandler');
 
 class ExcelController {
   // Get all accessible workbooks
@@ -31,7 +34,7 @@ class ExcelController {
    * Get worksheets in a workbook
    */
   getWorksheets = catchAsync(async (req, res) => {
-    const { driveId, itemId, driveName, itemName } = req.query;
+    const { driveId, itemId, driveName, itemName, itemPath } = req.query;
     const auditContext = auditService.createAuditContext(req);
 
     // Resolve IDs if names are provided
@@ -40,7 +43,18 @@ class ExcelController {
 
     if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
       resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      
+      try {
+        // Try to resolve by name first, then by path if multiple matches
+        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      } catch (err) {
+        if (err.isMultipleMatches && itemPath) {
+          // If multiple matches and path is provided, resolve by path
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+        } else {
+          throw err; // Re-throw the original error
+        }
+      }
     }
 
     const worksheets = await excelService.getWorksheets(
@@ -58,59 +72,81 @@ class ExcelController {
 
   // Read data from Excel range
   readRange = catchAsync(async (req, res) => {
-    const { driveId, itemId, driveName, itemName, worksheetId, worksheetName, range } = req.body;
     const auditContext = auditService.createAuditContext(req);
+    
+    // Extract name-based parameters
+    const nameParams = nameResolutionMixin.extractNameParams(req);
+    
+    // Validate input parameters
+    nameResolutionMixin.validateNameInput(nameParams);
+    
+    try {
+      // Resolve names to IDs with backward compatibility
+      const resolution = await nameResolutionMixin.resolveNames(req, nameParams);
+      
+      // Handle multiple matches error
+      if (!resolution.itemId) {
+        throw new AppError('Could not resolve file. Please check the file name and path.', 404);
+      }
 
-    // Resolve driveId/itemId from names if needed
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-    if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-    }
+      // Log name resolution for audit
+      nameResolutionMixin.logNameResolution(resolution, 'READ_RANGE', { 
+        range: req.body.range,
+        worksheetName: req.body.worksheetName 
+      });
 
-    // Extract worksheet from range if provided like Sheet1!A1:D10
-    const { sheetName, address } = resolverService.parseSheetAndAddress(range);
-    let resolvedWorksheetId = worksheetId;
-    const effectiveWorksheetName = worksheetName || sheetName;
-    if (!resolvedWorksheetId && effectiveWorksheetName) {
-      resolvedWorksheetId = await resolverService.resolveWorksheetIdByName(
-        req.accessToken,
-        resolvedDriveId,
-        resolvedItemId,
-        effectiveWorksheetName
-      );
-    }
+      // Extract worksheet from range if provided like Sheet1!A1:D10
+      const { sheetName, address } = resolverService.parseSheetAndAddress(req.body.range);
+      let resolvedWorksheetId = resolution.sheetId;
+      const effectiveWorksheetName = req.body.worksheetName || sheetName || resolution.sheetName;
+      
+      if (!resolvedWorksheetId && effectiveWorksheetName) {
+        resolvedWorksheetId = await resolverService.resolveWorksheetIdByName(
+          req.accessToken,
+          resolution.driveId,
+          resolution.itemId,
+          effectiveWorksheetName
+        );
+      }
 
-    const data = await excelService.readRange({
-      accessToken: req.accessToken,
-      driveId: resolvedDriveId,
-      itemId: resolvedItemId,
-      worksheetId: resolvedWorksheetId,
-      range: address,
-      auditContext,
-    });
+      const data = await excelService.readRange({
+        accessToken: req.accessToken,
+        driveId: resolution.driveId,
+        itemId: resolution.itemId,
+        worksheetId: resolvedWorksheetId,
+        range: address,
+        auditContext,
+      });
 
-    res.json({
-      status: "success",
-      data: {
-        range: data.address,
-        values: data.values,
-        formulas: data.formulas,
-        text: data.text,
-        dimensions: {
-          rows: data.rowCount,
-          columns: data.columnCount,
+      res.json({
+        status: "success",
+        data: {
+          range: data.address,
+          values: data.values,
+          formulas: data.formulas,
+          text: data.text,
+          dimensions: {
+            rows: data.rowCount,
+            columns: data.columnCount,
+          },
         },
-      },
-    });
+        resolution: nameResolutionMixin.getResolutionSummary(resolution)
+      });
+
+    } catch (err) {
+      // Handle multiple matches with user-friendly response
+      if (err.isMultipleMatches) {
+        return nameResolutionMixin.handleMultipleMatches(res, err, 'file');
+      }
+      throw err;
+    }
   });
 
   /**
    * Write data to Excel range
    */
   writeRange = catchAsync(async (req, res) => {
-    const { driveId, itemId, driveName, itemName, worksheetId, worksheetName, range, values } = req.body;
+    const { driveId, itemId, driveName, itemName, itemPath, worksheetId, worksheetName, range, values } = req.body;
     const auditContext = auditService.createAuditContext(req);
 
     // Resolve drive/item
@@ -118,7 +154,16 @@ class ExcelController {
     let resolvedItemId = itemId;
     if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
       resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      
+      try {
+        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      } catch (err) {
+        if (err.isMultipleMatches && itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+        } else {
+          throw err;
+        }
+      }
     }
 
     // Resolve worksheet and address
@@ -161,14 +206,23 @@ class ExcelController {
    * Read data from Excel table
    */
   readTable = catchAsync(async (req, res) => {
-    const { driveId, itemId, driveName, itemName, worksheetId, worksheetName, tableName } = req.body;
+    const { driveId, itemId, driveName, itemName, itemPath, worksheetId, worksheetName, tableName } = req.body;
     const auditContext = auditService.createAuditContext(req);
 
     let resolvedDriveId = driveId;
     let resolvedItemId = itemId;
     if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
       resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      
+      try {
+        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      } catch (err) {
+        if (err.isMultipleMatches && itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+        } else {
+          throw err;
+        }
+      }
     }
 
     let resolvedWorksheetId = worksheetId;
@@ -213,14 +267,23 @@ class ExcelController {
    * Add rows to Excel table
    */
   addTableRows = catchAsync(async (req, res) => {
-    const { driveId, itemId, driveName, itemName, worksheetId, worksheetName, tableName, rows } = req.body;
+    const { driveId, itemId, driveName, itemName, itemPath, worksheetId, worksheetName, tableName, rows } = req.body;
     const auditContext = auditService.createAuditContext(req);
 
     let resolvedDriveId = driveId;
     let resolvedItemId = itemId;
     if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
       resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      
+      try {
+        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      } catch (err) {
+        if (err.isMultipleMatches && itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+        } else {
+          throw err;
+        }
+      }
     }
 
     let resolvedWorksheetId = worksheetId;
@@ -388,6 +451,63 @@ class ExcelController {
         driveId: driveId,
       },
     });
+  });
+
+  /**
+   * Search for files recursively and return all matches with their paths
+   * This endpoint helps users find files when they don't know the exact location
+   */
+  searchFiles = catchAsync(async (req, res) => {
+    const { driveName, fileName } = req.query;
+    const auditContext = auditService.createAuditContext(req);
+
+    if (!driveName || !fileName) {
+      return res.status(400).json({
+        status: "error",
+        error: {
+          code: 400,
+          message: "Both driveName and fileName are required"
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    try {
+      // Resolve drive ID
+      const driveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+      
+      // Create graph client and perform recursive search
+      const graphClient = resolverService.createGraphClient(req.accessToken);
+      const matches = await resolverService.recursiveSearchForFile(graphClient, driveId, fileName);
+      
+      auditService.logSystemEvent({
+        event: "FILE_SEARCH",
+        details: { 
+          driveName, 
+          fileName, 
+          matchCount: matches.length,
+          requestedBy: auditContext.user 
+        },
+      });
+
+      res.json({
+        status: "success",
+        data: {
+          fileName,
+          driveName,
+          matches: matches.map(match => ({
+            id: match.id,
+            name: match.name,
+            path: match.path,
+            parentId: match.parentId
+          })),
+          totalMatches: matches.length
+        }
+      });
+    } catch (err) {
+      logger.error('File search failed:', { driveName, fileName, error: err.message });
+      throw err;
+    }
   });
 
   /**
