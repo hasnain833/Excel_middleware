@@ -254,6 +254,30 @@ class Server {
                         path: '/api/excel/worksheet-info',
                         description: 'Get worksheet structure and metadata',
                         parameters: ['driveId', 'itemId', 'sheetName (optional)']
+                    },
+                    createFile: {
+                        method: 'POST',
+                        path: '/api/excel/create-file',
+                        description: 'Create a new Excel file in a drive/folder',
+                        body: ['driveId|driveName', 'parentPath (optional)', 'fileName (.xlsx)']
+                    },
+                    createSheet: {
+                        method: 'POST',
+                        path: '/api/excel/create-sheet',
+                        description: 'Add a worksheet to an existing workbook',
+                        body: ['driveId|driveName', 'itemId|itemName(+itemPath optional)', 'sheetName', 'position (optional)']
+                    },
+                    deleteFile: {
+                        method: 'DELETE',
+                        path: '/api/excel/delete-file',
+                        description: 'Delete a workbook by ID or name/path',
+                        body: ['driveId|driveName (optional)', 'itemId OR itemName(+itemPath optional)', 'force (optional)']
+                    },
+                    deleteSheet: {
+                        method: 'DELETE',
+                        path: '/api/excel/delete-sheet',
+                        description: 'Delete a worksheet from an existing workbook (not the last sheet)',
+                        body: ['driveId|driveName', 'itemId|itemName(+itemPath optional)', 'sheetName']
                     }
                 },
                 authentication: {

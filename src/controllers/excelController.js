@@ -555,6 +555,216 @@ class ExcelController {
       data: logs,
     });
   });
-}
 
-module.exports = new ExcelController();
+  /**
+   * Create a new Excel file in a drive/folder
+   */
+  createFile = catchAsync(async (req, res) => {
+    const { driveId, driveName, parentPath = '', fileName, template = 'blank' } = req.body;
+    const auditContext = auditService.createAuditContext(req);
+
+    // Resolve drive
+    let resolvedDriveId = driveId;
+    if (!resolvedDriveId && driveName) {
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    }
+    if (!resolvedDriveId) {
+      throw new AppError('driveId or driveName is required', 400);
+    }
+
+    const graphClient = excelService.createGraphClient(req.accessToken);
+
+    try {
+      const basePath = parentPath ? parentPath.replace(/\/$/, '') : '';
+      const parentSegment = basePath ? `root:${basePath}:` : 'root';
+      const resp = await graphClient
+        .api(`/drives/${resolvedDriveId}/${parentSegment}/children`)
+        .post({ name: fileName, file: {}, '@microsoft.graph.conflictBehavior': 'fail' });
+
+      auditService.logSystemEvent({
+        event: 'FILE_CREATED',
+        details: { driveId: resolvedDriveId, fileName, parentPath: basePath, requestedBy: auditContext.user }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          driveId: resolvedDriveId,
+          itemId: resp.id,
+          path: `${basePath || ''}/${resp.name}`.replace(/\\+/g, '/').replace(/^\/(?=\/)/, '/'),
+          name: resp.name
+        }
+      });
+    } catch (err) {
+      if (err.statusCode === 409 || err.code === 'nameAlreadyExists' || err.status === 409) {
+        return res.status(409).json({ status: 'error', error: { code: 409, message: 'File already exists at the target path.' } });
+      }
+      throw err;
+    }
+  });
+
+  /**
+   * Create a new worksheet in an existing workbook
+   */
+  createSheet = catchAsync(async (req, res) => {
+    const { driveId, driveName, itemId, itemName, itemPath, sheetName, position } = req.body;
+    const auditContext = auditService.createAuditContext(req);
+
+    // Resolve drive and item
+    let resolvedDriveId = driveId;
+    if (!resolvedDriveId && driveName) {
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    }
+
+    let resolvedItemId = itemId;
+    if (!resolvedItemId && itemName) {
+      try {
+        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      } catch (err) {
+        if (err.isMultipleMatches && itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!resolvedDriveId || !resolvedItemId) {
+      throw new AppError('Unable to resolve drive or file. Provide driveId/driveName and itemId/itemName.', 400);
+    }
+
+    const graphClient = excelService.createGraphClient(req.accessToken);
+
+    try {
+      const body = position === undefined ? { name: sheetName } : { name: sheetName, position };
+      const resp = await graphClient
+        .api(`/drives/${resolvedDriveId}/items/${resolvedItemId}/workbook/worksheets/add`)
+        .post(body);
+
+      auditService.logSystemEvent({
+        event: 'SHEET_CREATED',
+        details: { driveId: resolvedDriveId, itemId: resolvedItemId, sheetName, position, requestedBy: auditContext.user }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          worksheet: { id: resp.id, name: resp.name, position: resp.position },
+          file: { itemId: resolvedItemId, name: itemName || undefined }
+        }
+      });
+    } catch (err) {
+      if (err.statusCode === 400 || err.code === 'invalidRequest' || err.status === 400) {
+        return res.status(400).json({ status: 'error', error: { code: 400, message: err.message || 'Unable to create worksheet.' } });
+      }
+      throw err;
+    }
+  });
+
+  /**
+   * Delete a workbook by ID or name/path
+   */
+  deleteFile = catchAsync(async (req, res) => {
+    const { driveId, driveName, itemId, itemName, itemPath, force } = req.body;
+    const auditContext = auditService.createAuditContext(req);
+
+    let resolvedDriveId = driveId;
+    if (!resolvedDriveId && driveName) {
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    }
+
+    let resolvedItemId = itemId;
+    if (!resolvedItemId && itemName) {
+      try {
+        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      } catch (err) {
+        if (err.isMultipleMatches && !itemPath) {
+          return res.status(409).json({
+            status: 'multiple_matches',
+            data: { matches: (err.matches || []).map(m => ({ id: m.id, name: m.name, path: m.path, parentId: m.parentId })) }
+          });
+        }
+        if (err.isMultipleMatches && itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!resolvedDriveId || !resolvedItemId) {
+      throw new AppError('Unable to resolve file to delete', 400);
+    }
+
+    const graphClient = excelService.createGraphClient(req.accessToken);
+
+    try {
+      await graphClient.api(`/drives/${resolvedDriveId}/items/${resolvedItemId}`).delete();
+
+      auditService.logSystemEvent({
+        event: 'FILE_DELETED',
+        details: { driveId: resolvedDriveId, itemId: resolvedItemId, requestedBy: auditContext.user, force: !!force }
+      });
+
+      return res.status(200).json({ status: 'success', data: { deleted: true, itemId: resolvedItemId, name: itemName, path: itemPath || null } });
+    } catch (err) {
+      if (err.statusCode === 423 || err.code === 'resourceLocked') {
+        return res.status(423).json({ status: 'error', error: { code: 423, message: 'File is locked or in use. Retry later or use force if supported.' } });
+      }
+      throw err;
+    }
+  });
+
+  /**
+   * Delete a worksheet from a workbook (not the last sheet)
+   */
+  deleteSheet = catchAsync(async (req, res) => {
+    const { driveId, driveName, itemId, itemName, itemPath, sheetName } = req.body;
+    const auditContext = auditService.createAuditContext(req);
+
+    let resolvedDriveId = driveId;
+    if (!resolvedDriveId && driveName) {
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    }
+
+    let resolvedItemId = itemId;
+    if (!resolvedItemId && itemName) {
+      try {
+        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      } catch (err) {
+        if (err.isMultipleMatches && itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!resolvedDriveId || !resolvedItemId) {
+      throw new AppError('Unable to resolve workbook for sheet deletion', 400);
+    }
+
+    const graphClient = excelService.createGraphClient(req.accessToken);
+
+    // Guard: last sheet should not be deleted
+    const wsResp = await graphClient
+      .api(`/drives/${resolvedDriveId}/items/${resolvedItemId}/workbook/worksheets`)
+      .get();
+    const totalSheets = (wsResp.value || []).length;
+    if (totalSheets <= 1) {
+      return res.status(400).json({ status: 'error', error: { code: 400, message: 'Cannot delete the last remaining worksheet in a workbook.' } });
+    }
+
+    const worksheetId = await resolverService.resolveWorksheetIdByName(req.accessToken, resolvedDriveId, resolvedItemId, sheetName);
+    await graphClient
+      .api(`/drives/${resolvedDriveId}/items/${resolvedItemId}/workbook/worksheets/${worksheetId}`)
+      .delete();
+
+    auditService.logSystemEvent({
+      event: 'SHEET_DELETED',
+      details: { driveId: resolvedDriveId, itemId: resolvedItemId, sheetName, requestedBy: auditContext.user }
+    });
+
+    return res.status(200).json({ status: 'success', data: { deleted: true, sheetName, file: { itemId: resolvedItemId, name: itemName || undefined } } });
+  });
+}

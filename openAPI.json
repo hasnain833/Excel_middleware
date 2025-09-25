@@ -356,6 +356,65 @@
         }
       }
     }
+    ,
+    "/api/excel/create-file": {
+      "post": {
+        "summary": "Create a new Excel file in a drive/folder",
+        "operationId": "createFile",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateFileRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "File created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
+          "409": { "description": "Conflict - file exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    },
+    "/api/excel/create-sheet": {
+      "post": {
+        "summary": "Add a worksheet to a workbook",
+        "operationId": "createSheet",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateSheetRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Sheet created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
+          "400": { "description": "Bad request or duplicate name", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "404": { "description": "Drive or file not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    },
+    "/api/excel/delete-file": {
+      "delete": {
+        "summary": "Delete a workbook by ID or name/path",
+        "operationId": "deleteFile",
+        "parameters": [
+          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false },
+          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false }
+        ],
+        "requestBody": { "required": false, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteFileRequest" } } } },
+        "responses": {
+          "200": { "description": "File deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
+          "409": { "description": "Multiple matches", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MultipleMatchError" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    },
+    "/api/excel/delete-sheet": {
+      "delete": {
+        "summary": "Delete a worksheet from a workbook (not the last)",
+        "operationId": "deleteSheet",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteSheetRequest" } } } },
+        "responses": {
+          "200": { "description": "Sheet deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
+          "400": { "description": "Cannot delete last sheet or bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+        }
+      }
+    }
   },
   "components": {
     "parameters": {
@@ -763,6 +822,53 @@
           "results": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
         },
         "required": ["status", "results"]
+      },
+      "CreateFileRequest": {
+        "type": "object",
+        "properties": {
+          "driveId": { "type": "string" },
+          "driveName": { "type": "string" },
+          "parentPath": { "type": "string", "description": "Like /Projects/2024; default root" },
+          "fileName": { "type": "string", "pattern": ".*\\.xlsx$" },
+          "template": { "type": "string", "enum": ["blank"], "default": "blank" }
+        },
+        "required": ["fileName"]
+      },
+      "CreateSheetRequest": {
+        "type": "object",
+        "properties": {
+          "driveId": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemId": { "type": "string" },
+          "itemName": { "type": "string" },
+          "itemPath": { "type": "string" },
+          "sheetName": { "type": "string" },
+          "position": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["sheetName"]
+      },
+      "DeleteFileRequest": {
+        "type": "object",
+        "properties": {
+          "driveId": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemId": { "type": "string" },
+          "itemName": { "type": "string" },
+          "itemPath": { "type": "string" },
+          "force": { "type": "boolean" }
+        }
+      },
+      "DeleteSheetRequest": {
+        "type": "object",
+        "properties": {
+          "driveId": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemId": { "type": "string" },
+          "itemName": { "type": "string" },
+          "itemPath": { "type": "string" },
+          "sheetName": { "type": "string" }
+        },
+        "required": ["sheetName"]
       }
     }
   }

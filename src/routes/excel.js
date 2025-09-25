@@ -1,21 +1,10 @@
 const express = require("express");
 const router = express.Router();
-
-// Controllers
 const excelController = require("../controllers/excelController");
 const findReplaceController = require("../controllers/findReplaceController");
 const excelEngineController = require("../controllers/excelEngineController");
-
-// Middleware
-const {
-  ensureAuthenticated,
-  logAuthenticatedRequest,
-} = require("../auth/middleware");
-const {
-  validateRequest,
-  validateRangeValuesCompatibility,
-  sanitizeRequest,
-} = require("../middleware/validation");
+const { ensureAuthenticated, logAuthenticatedRequest, } = require("../auth/middleware");
+const { validateRequest, validateRangeValuesCompatibility, sanitizeRequest, } = require("../middleware/validation");
 const { writeLimiter, generalLimiter } = require("../middleware/rateLimiter");
 const rangeValidator = require("../middleware/rangeValidator");
 const auditLogger = require("../middleware/auditLogger");
@@ -25,6 +14,8 @@ router.use(sanitizeRequest);
 router.use(ensureAuthenticated);
 router.use(logAuthenticatedRequest);
 router.use(generalLimiter);
+
+// All Routes 
 router.get("/workbooks", excelController.getWorkbooks);
 
 router.get(
@@ -106,25 +97,58 @@ router.post(
   excelEngineController.applyFormatting
 );
 
-router.post(
-  "/validate-formula",
-  validateRequest("validateFormula", "body"),
-  excelEngineController.validateFormula
-);
+  router.post(
+    "/validate-formula",
+    validateRequest("validateFormula", "body"),
+    excelEngineController.validateFormula
+  );
 
-router.get(
-  "/cell-info",
-  validateRequest("cellInfo", "query"),
-  excelEngineController.getCellInfo
-);
+  router.get(
+    "/cell-info",
+    validateRequest("cellInfo", "query"),
+    excelEngineController.getCellInfo
+  );
 
-router.get("/functions", excelEngineController.getExcelFunctions);
+  router.get("/functions", excelEngineController.getExcelFunctions);
 
-router.get(
-  "/worksheet-info",
-  validateRequest("worksheetInfo", "query"),
-  excelEngineController.getWorksheetInfo
-);
-router.get("/logs", require("../controllers/auditController").getAuditLogs);
+  router.get(
+    "/worksheet-info",
+    validateRequest("worksheetInfo", "query"),
+    excelEngineController.getWorksheetInfo
+  );
+  router.get("/logs", require("../controllers/auditController").getAuditLogs);
 
-module.exports = router;
+  // File and worksheet management
+  router.post(
+    "/create-file",
+    writeLimiter,
+    auditLogger.middleware(),
+    validateRequest("createFile", "body"),
+    excelController.createFile
+  );
+
+  router.post(
+    "/create-sheet",
+    writeLimiter,
+    auditLogger.middleware(),
+    validateRequest("createSheet", "body"),
+    excelController.createSheet
+  );
+
+  router.delete(
+    "/delete-file",
+    writeLimiter,
+    auditLogger.middleware(),
+    validateRequest("deleteFile", "queryOrBody"),
+    excelController.deleteFile
+  );
+
+  router.delete(
+    "/delete-sheet",
+    writeLimiter,
+    auditLogger.middleware(),
+    validateRequest("deleteSheet", "body"),
+    excelController.deleteSheet
+  );
+
+  module.exports = router;
