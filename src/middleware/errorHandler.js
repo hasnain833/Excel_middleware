@@ -1,5 +1,5 @@
 /**
- * Error Handling Middleware
+ * Error Handling Middleware (Serverless-friendly)
  * Centralized error handling for the application
  */
 
@@ -9,247 +9,262 @@ const logger = require('../config/logger');
  * Custom error class for application-specific errors
  */
 class AppError extends Error {
-    constructor(message, statusCode = 500, isOperational = true) {
-        super(message);
-        this.statusCode = statusCode;
-        this.isOperational = isOperational;
-        this.timestamp = new Date().toISOString();
-        
-        Error.captureStackTrace(this, this.constructor);
-    }
+  constructor(message, statusCode = 500, isOperational = true) {
+    super(typeof message === 'string' ? message : JSON.stringify(message));
+    this.statusCode = statusCode;
+    this.isOperational = isOperational;
+    this.timestamp = new Date().toISOString();
+    Error.captureStackTrace?.(this, this.constructor);
+  }
 }
 
 /**
- * Handle Microsoft Graph API errors
- * @param {Object} error - Graph API error
- * @returns {Object} Formatted error response
+ * Mask common secrets in nested objects (for safe logging)
  */
-const handleGraphError = (error) => {
-    const graphError = error.response?.data?.error;
-    
-    if (graphError) {
-        switch (graphError.code) {
-            case 'Forbidden':
-                return new AppError('Access denied to the requested resource', 403);
-            case 'NotFound':
-                return new AppError('Requested resource not found', 404);
-            case 'BadRequest':
-                return new AppError(`Invalid request: ${graphError.message}`, 400);
-            case 'Unauthorized':
-                return new AppError('Authentication failed', 401);
-            case 'TooManyRequests':
-                return new AppError('Rate limit exceeded. Please try again later', 429);
-            case 'InternalServerError':
-                return new AppError('Microsoft Graph service error', 502);
-            default:
-                return new AppError(`Graph API error: ${graphError.message}`, 500);
-        }
+const maskSecrets = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  const clone = JSON.parse(JSON.stringify(obj));
+  const mask = (v) =>
+    typeof v === 'string' && v.length > 8 ? v.slice(0, 4) + '***' + v.slice(-2) : v;
+
+  const keysToMask = [
+    'access_token',
+    'refresh_token',
+    'client_secret',
+    'Authorization',
+    'authorization',
+    'x-api-key',
+    'apiKey',
+  ];
+
+  const walk = (node) => {
+    if (node && typeof node === 'object') {
+      Object.keys(node).forEach((k) => {
+        if (keysToMask.includes(k)) node[k] = mask(node[k]);
+        else if (typeof node[k] === 'object') walk(node[k]);
+      });
     }
-    
-    return new AppError('Unknown Graph API error', 500);
+  };
+
+  walk(clone);
+  return clone;
 };
 
 /**
- * Handle validation errors
- * @param {Object} error - Validation error
- * @returns {Object} Formatted error response
+ * Handle Microsoft Graph / Axios errors robustly
+ * Adds retryAfter when present on 429
+ */
+const handleGraphError = (error) => {
+  const status = error?.response?.status;
+  const graphError = error?.response?.data?.error;
+  const retryAfter = error?.response?.headers?.['retry-after'];
+
+  const messageFrom = () => {
+    if (graphError?.message) return graphError.message;
+    if (typeof error?.response?.data === 'string') return error.response.data;
+    return 'Graph API error';
+  };
+
+  if (status === 429 || graphError?.code === 'TooManyRequests') {
+    const appErr = new AppError('Rate limit exceeded. Please try again later', 429);
+    if (retryAfter) appErr.retryAfter = retryAfter;
+    return appErr;
+  }
+
+  if (status === 401 || graphError?.code === 'Unauthorized') {
+    return new AppError('Authentication failed', 401);
+  }
+  if (status === 403 || graphError?.code === 'Forbidden') {
+    return new AppError('Access denied to the requested resource', 403);
+  }
+  if (status === 404 || graphError?.code === 'NotFound') {
+    return new AppError('Requested resource not found', 404);
+  }
+  if (status === 400 || graphError?.code === 'BadRequest') {
+    return new AppError(`Invalid request: ${messageFrom()}`, 400);
+  }
+  if ((status && status >= 500) || graphError?.code === 'InternalServerError') {
+    return new AppError('Microsoft Graph service error', 502);
+  }
+
+  return new AppError(messageFrom(), status || 500);
+};
+
+/**
+ * Handle validation errors (e.g., Joi)
  */
 const handleValidationError = (error) => {
-    const message = error.details ? 
-        error.details.map(detail => detail.message).join(', ') :
-        'Validation failed';
-    
-    return new AppError(message, 400);
+  const message = error.details
+    ? error.details.map((d) => d.message).join(', ')
+    : error.message || 'Validation failed';
+  return new AppError(message, 400);
 };
 
 /**
  * Handle authentication errors
- * @param {Object} error - Authentication error
- * @returns {Object} Formatted error response
  */
 const handleAuthError = (error) => {
-    if (error.message.includes('AADSTS')) {
-        return new AppError('Azure AD authentication failed', 401);
-    }
-    
-    return new AppError('Authentication error', 401);
+  if (error?.message?.includes('AADSTS')) {
+    return new AppError('Azure AD authentication failed', 401);
+  }
+  return new AppError('Authentication error', 401);
 };
 
 /**
- * Development error response (includes stack trace)
- * @param {Object} err - Error object
- * @param {Object} res - Express response object
+ * Sanitize error for logging (prevent circular refs and mask secrets)
  */
-const sendErrorDev = (err, res) => {
-    res.status(err.statusCode || 500).json({
-        status: 'error',
-        error: {
-            code: err.statusCode || 500,
-            message: err.message,
-            stack: err.stack
-        },
-        timestamp: err.timestamp || new Date().toISOString()
-    });
+const sanitizeError = (err) => {
+  const sanitized = {
+    message: err.message || 'Unknown error',
+    name: err.name,
+    stack: err.stack,
+  };
+
+  // Axios/HTTP response details
+  if (err.response?.data) {
+    sanitized.responseData = maskSecrets(err.response.data);
+    sanitized.statusCode = err.response.status;
+    sanitized.responseHeaders = maskSecrets(err.response.headers);
+  }
+
+  // Axios request details
+  if (err.config?.url) {
+    sanitized.requestUrl = err.config.url;
+    sanitized.requestMethod = err.config.method;
+    sanitized.requestHeaders = maskSecrets(err.config.headers);
+  }
+
+  return sanitized;
+};
+
+/**
+ * Development error response (with stack)
+ */
+const sendErrorDev = (err, res, requestId) => {
+  res.status(err.statusCode || 500).json({
+    status: 'error',
+    error: {
+      code: err.statusCode || 500,
+      message: err.message,
+      stack: err.stack,
+      ...(err.retryAfter ? { retryAfter: err.retryAfter } : {}),
+    },
+    requestId,
+    timestamp: err.timestamp || new Date().toISOString(),
+  });
 };
 
 /**
  * Production error response (sanitized)
- * @param {Object} err - Error object
- * @param {Object} res - Express response object
  */
-const sendErrorProd = (err, res) => {
-    // Operational, trusted error: send message to client
-    if (err.isOperational) {
-        res.status(err.statusCode || 500).json({
-            status: 'error',
-            error: {
-                code: err.statusCode || 500,
-                message: err.message
-            },
-            timestamp: err.timestamp || new Date().toISOString()
-        });
-    } else {
-        // Programming or other unknown error: don't leak error details
-        logger.error('Unknown error:', {
-            message: err.message,
-            stack: err.stack,
-            name: err.name
-        });
-        
-        res.status(500).json({
-            status: 'error',
-            error: {
-                code: 500,
-                message: 'Internal server error'
-            },
-            timestamp: new Date().toISOString()
-        });
-    }
-};
-
-/**
- * Sanitize error object to prevent circular references
- * @param {Object} err - Error object
- * @returns {Object} Sanitized error data
- */
-const sanitizeError = (err) => {
-    const sanitized = {
-        message: err.message || 'Unknown error',
-        name: err.name,
-        stack: err.stack
-    };
-
-    // Extract response data if it exists (from axios errors)
-    if (err.response?.data) {
-        sanitized.responseData = err.response.data;
-        sanitized.statusCode = err.response.status;
-    }
-
-    // Extract request info if it exists
-    if (err.config?.url) {
-        sanitized.requestUrl = err.config.url;
-        sanitized.requestMethod = err.config.method;
-    }
-
-    return sanitized;
+const sendErrorProd = (err, res, requestId) => {
+  if (err.isOperational) {
+    res.status(err.statusCode || 500).json({
+      status: 'error',
+      error: {
+        code: err.statusCode || 500,
+        message: err.message,
+        ...(err.retryAfter ? { retryAfter: err.retryAfter } : {}),
+      },
+      requestId,
+      timestamp: err.timestamp || new Date().toISOString(),
+    });
+  } else {
+    // Unknown/unexpected error
+    res.status(500).json({
+      status: 'error',
+      error: { code: 500, message: 'Internal server error' },
+      requestId,
+      timestamp: new Date().toISOString(),
+    });
+  }
 };
 
 /**
  * Global error handling middleware
- * @param {Object} err - Error object
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Next middleware function
  */
 const globalErrorHandler = (err, req, res, next) => {
-    let error = { ...err };
-    error.message = err.message;
+  let error =
+    err instanceof AppError
+      ? err
+      : new AppError(err?.message || 'Internal error', err?.statusCode || 500, false);
 
-    // Log sanitized error details (no circular references)
-    const sanitizedError = sanitizeError(err);
-    logger.error('Error occurred:', {
-        ...sanitizedError,
-        url: req.originalUrl,
-        method: req.method,
-        ip: req.ip,
-        userAgent: req.get('User-Agent'),
-        timestamp: new Date().toISOString()
-    });
+  // Log sanitized error with context
+  const sanitizedError = sanitizeError(err);
+  logger.error('Error occurred:', {
+    ...sanitizedError,
+    url: req.originalUrl,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    requestId: req.id,
+    timestamp: new Date().toISOString(),
+  });
 
-    // Handle specific error types
-    if (err.response && err.response.status) {
-        // Axios/HTTP errors (likely from Graph API)
-        error = handleGraphError(err);
-    } else if (err.name === 'ValidationError' || err.isJoi) {
-        // Joi validation errors
-        error = handleValidationError(err);
-    } else if (err.message && err.message.includes('Authentication')) {
-        // Authentication errors
-        error = handleAuthError(err);
-    } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
-        // Network errors
-        error = new AppError('Service temporarily unavailable', 503);
-    } else if (err.name === 'SyntaxError' && err.message.includes('JSON')) {
-        // JSON parsing errors
-        error = new AppError('Invalid JSON in request body', 400);
-    }
+  // Map known error shapes
+  if (err.response && err.response.status) {
+    error = handleGraphError(err);
+  } else if (err.name === 'ValidationError' || err.isJoi) {
+    error = handleValidationError(err);
+  } else if (err.message && err.message.includes('Authentication')) {
+    error = handleAuthError(err);
+  } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
+    error = new AppError('Service temporarily unavailable', 503);
+  } else if (err.name === 'SyntaxError' && err.message.includes('JSON')) {
+    error = new AppError('Invalid JSON in request body', 400);
+  }
 
-    // Send error response
-    if (process.env.NODE_ENV === 'development') {
-        sendErrorDev(error, res);
-    } else {
-        sendErrorProd(error, res);
-    }
+  if (process.env.NODE_ENV === 'development') {
+    return sendErrorDev(error, res, req.id);
+  }
+  return sendErrorProd(error, res, req.id);
 };
 
 /**
- * Handle unhandled routes (404 errors)
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Next middleware function
+ * Handle unhandled routes (404)
  */
 const handleNotFound = (req, res, next) => {
-    const err = new AppError(`Route ${req.originalUrl} not found`, 404);
-    next(err);
+  const err = new AppError(`Route ${req.originalUrl} not found`, 404);
+  next(err);
 };
 
 /**
  * Async error wrapper to catch errors in async route handlers
- * @param {Function} fn - Async function to wrap
- * @returns {Function} Wrapped function
  */
 const catchAsync = (fn) => {
-    return (req, res, next) => {
-        Promise.resolve(fn(req, res, next)).catch(next);
-    };
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
 };
 
 /**
- * Handle promise rejections and uncaught exceptions
+ * Register unhandled rejection/exception handlers
+ * (No-op in serverless environments)
  */
 const handleUnhandledRejections = () => {
-    process.on('unhandledRejection', (err) => {
-        logger.error('Unhandled Promise Rejection:', err);
-        // In production, you might want to gracefully shut down the server
-        if (process.env.NODE_ENV === 'production') {
-            process.exit(1);
-        }
-    });
+  const isServerless =
+    process.env.SERVERLESS === 'true' || process.env.VERCEL === '1' || !!process.env.AWS_REGION;
 
-    process.on('uncaughtException', (err) => {
-        logger.error('Uncaught Exception:', err);
-        // Always exit on uncaught exceptions
-        process.exit(1);
-    });
+  if (isServerless) return;
+
+  process.on('unhandledRejection', (err) => {
+    logger.error('Unhandled Promise Rejection:', err);
+    // Do not exit; allow process manager to decide (PM2/K8s/etc.)
+  });
+
+  process.on('uncaughtException', (err) => {
+    logger.error('Uncaught Exception:', err);
+    // Do not force-exit; let orchestrator restart if needed
+  });
 };
 
 module.exports = {
-    AppError,
-    globalErrorHandler,
-    handleNotFound,
-    catchAsync,
-    handleUnhandledRejections,
-    handleGraphError,
-    handleValidationError,
-    handleAuthError
+  AppError,
+  globalErrorHandler,
+  handleNotFound,
+  catchAsync,
+  handleUnhandledRejections,
+  handleGraphError,
+  handleValidationError,
+  handleAuthError,
 };

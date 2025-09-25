@@ -57,73 +57,80 @@ schemas.parentPath = Joi.string().pattern(/^\//).optional();
 schemas.position = Joi.number().integer().min(0).optional();
 schemas.itemPath = Joi.string().pattern(/^\//).optional();
 
-// Helper to require either IDs or names
-const idOrName = Joi.alternatives().try(
-  Joi.object({ driveId: schemas.driveId.required(), itemId: schemas.workbookId.required() }),
-  Joi.object({ driveName: schemas.driveName.required(), itemName: schemas.itemName.required() })
-);
+// Names-only base object (IDs are not accepted anymore)
+const namesOnlyBase = Joi.object({
+  driveName: schemas.driveName.required(),
+  itemName: schemas.itemName.required(),
+  itemPath: schemas.itemPath.optional()
+});
 
 // Request validation schemas
 const requestSchemas = {
-  // Read range request
-  readRange: idOrName.concat(Joi.object({
-    // worksheet can be provided via worksheetId or worksheetName or inferred from range prefix
-    worksheetId: schemas.worksheetId.optional(),
+  // Read range request (names-only)
+  readRange: namesOnlyBase.concat(Joi.object({
     worksheetName: schemas.worksheetName.optional(),
     range: schemas.range.required()
   })),
 
-  // Write range request
-  writeRange: idOrName.concat(Joi.object({
-    worksheetId: schemas.worksheetId.optional(),
+  // Write range request (names-only)
+  writeRange: namesOnlyBase.concat(Joi.object({
     worksheetName: schemas.worksheetName.optional(),
     range: schemas.range.required(),
     values: schemas.values.required()
   })),
 
-  // Read table request
-  readTable: idOrName.concat(Joi.object({
-    worksheetId: schemas.worksheetId.optional(),
+  // Read table request (names-only)
+  readTable: namesOnlyBase.concat(Joi.object({
     worksheetName: schemas.worksheetName.optional(),
     tableName: schemas.tableName.required()
   })),
 
-  // Add table rows request
-  addTableRows: idOrName.concat(Joi.object({
-    worksheetId: schemas.worksheetId.optional(),
+  // Add table rows request (names-only)
+  addTableRows: namesOnlyBase.concat(Joi.object({
     worksheetName: schemas.worksheetName.optional(),
     tableName: schemas.tableName.required(),
     rows: schemas.rows.required()
   })),
 
-  // Get worksheets request
-  getWorksheets: idOrName,
+  // Get worksheets request (names-only)
+  getWorksheets: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional()
+  }),
 
   // New: Create file
   createFile: Joi.object({
-    driveId: schemas.driveId.optional(),
-    driveName: schemas.driveName.optional(),
+    driveName: schemas.driveName.required(),
     parentPath: schemas.parentPath,
     fileName: schemas.xlsxFileName.required(),
     template: Joi.string().valid('blank').default('blank')
-  }).or('driveId', 'driveName'),
+  }),
 
   // New: Create sheet
-  createSheet: idOrName.concat(Joi.object({
+  createSheet: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional(),
     sheetName: schemas.worksheetName.required(),
     position: schemas.position
-  })),
+  }),
 
   // New: Delete file (either itemId, or itemName with optional itemPath)
-  deleteFile: Joi.alternatives().try(
-    Joi.object({ itemId: schemas.workbookId.required(), driveId: schemas.driveId.optional(), driveName: schemas.driveName.optional(), force: schemas.force }),
-    Joi.object({ itemName: schemas.itemName.required(), itemPath: schemas.itemPath.optional(), driveId: schemas.driveId.optional(), driveName: schemas.driveName.optional(), force: schemas.force })
-  ),
+  deleteFile: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional(),
+    force: schemas.force
+  }),
 
   // New: Delete sheet
-  deleteSheet: idOrName.concat(Joi.object({
+  deleteSheet: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional(),
     sheetName: schemas.worksheetName.required()
-  }))
+  })
 };
 
 const isValidRange = (range) => {
