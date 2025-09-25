@@ -4,9 +4,9 @@ const cors = require("cors");
 const app = express();
 
 // Routers
-const healthRoutes = require("./routes/health");
-const excelRoutes = require("./routes/excel");
-const renameRoutes = require("./routes/rename");
+const healthRoutes = require("../src/routes/health.js");
+const excelRoutes = require("../src/routes/excel.js");
+const renameRoutes = require("../src/routes/rename.js");
 
 // Basic middleware
 app.use(cors());
