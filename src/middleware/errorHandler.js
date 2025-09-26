@@ -1,13 +1,4 @@
-/**
- * Error Handling Middleware (Serverless-friendly)
- * Centralized error handling for the application
- */
-
 const logger = require("../config/logger");
-
-/**
- * Custom error class for application-specific errors
- */
 class AppError extends Error {
   constructor(message, statusCode = 500, isOperational = true) {
     super(typeof message === "string" ? message : JSON.stringify(message));
@@ -18,9 +9,6 @@ class AppError extends Error {
   }
 }
 
-/**
- * Mask common secrets in nested objects (for safe logging)
- */
 const maskSecrets = (obj) => {
   if (!obj || typeof obj !== "object") return obj;
   const clone = JSON.parse(JSON.stringify(obj));
@@ -52,10 +40,7 @@ const maskSecrets = (obj) => {
   return clone;
 };
 
-/**
- * Handle Microsoft Graph / Axios errors robustly
- * Adds retryAfter when present on 429
- */
+
 const handleGraphError = (error) => {
   const status = error?.response?.status;
   const graphError = error?.response?.data?.error;
@@ -95,9 +80,6 @@ const handleGraphError = (error) => {
   return new AppError(messageFrom(), status || 500);
 };
 
-/**
- * Handle validation errors (e.g., Joi)
- */
 const handleValidationError = (error) => {
   const message = error.details
     ? error.details.map((d) => d.message).join(", ")
@@ -105,9 +87,7 @@ const handleValidationError = (error) => {
   return new AppError(message, 400);
 };
 
-/**
- * Handle authentication errors
- */
+
 const handleAuthError = (error) => {
   if (error?.message?.includes("AADSTS")) {
     return new AppError("Azure AD authentication failed", 401);
@@ -115,9 +95,6 @@ const handleAuthError = (error) => {
   return new AppError("Authentication error", 401);
 };
 
-/**
- * Sanitize error for logging (prevent circular refs and mask secrets)
- */
 const sanitizeError = (err) => {
   const sanitized = {
     message: err.message || "Unknown error",
@@ -142,9 +119,6 @@ const sanitizeError = (err) => {
   return sanitized;
 };
 
-/**
- * Development error response (with stack)
- */
 const sendErrorDev = (err, res, requestId) => {
   res.status(err.statusCode || 500).json({
     status: "error",
@@ -159,9 +133,6 @@ const sendErrorDev = (err, res, requestId) => {
   });
 };
 
-/**
- * Production error response (sanitized)
- */
 const sendErrorProd = (err, res, requestId) => {
   if (err.isOperational) {
     res.status(err.statusCode || 500).json({
@@ -185,9 +156,7 @@ const sendErrorProd = (err, res, requestId) => {
   }
 };
 
-/**
- * Global error handling middleware
- */
+
 const globalErrorHandler = (err, req, res, next) => {
   let error =
     err instanceof AppError
@@ -229,27 +198,18 @@ const globalErrorHandler = (err, req, res, next) => {
   return sendErrorProd(error, res, req.id);
 };
 
-/**
- * Handle unhandled routes (404)
- */
 const handleNotFound = (req, res, next) => {
   const err = new AppError(`Route ${req.originalUrl} not found`, 404);
   next(err);
 };
 
-/**
- * Async error wrapper to catch errors in async route handlers
- */
+
 const catchAsync = (fn) => {
   return (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 };
 
-/**
- * Register unhandled rejection/exception handlers
- * (No-op in serverless environments)
- */
 const handleUnhandledRejections = () => {
   const isServerless =
     process.env.SERVERLESS === "true" ||

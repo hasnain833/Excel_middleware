@@ -1,9 +1,3 @@
-/**
- * Audit Service
- * Handles audit logging for all Excel operations
- * Tracks timestamp, user, file, range, old vs new values
- */
-
 const logger = require('../config/logger');
 const { v4: uuidv4 } = require('uuid');
 
@@ -11,11 +5,6 @@ class AuditService {
     constructor() {
         this.auditLogger = logger.child({ component: 'audit' });
     }
-
-    /**
-     * Log Excel read operation
-     * @param {Object} params - Audit parameters
-     */
     logReadOperation(params) {
         const auditEntry = {
             id: uuidv4(),
@@ -34,10 +23,6 @@ class AuditService {
         return auditEntry.id;
     }
 
-    /**
-     * Log Excel write operation
-     * @param {Object} params - Audit parameters
-     */
     logWriteOperation(params) {
         const auditEntry = {
             id: uuidv4(),
@@ -64,10 +49,6 @@ class AuditService {
         return auditEntry.id;
     }
 
-    /**
-     * Log permission check
-     * @param {Object} params - Permission check parameters
-     */
     logPermissionCheck(params) {
         const auditEntry = {
             id: uuidv4(),
@@ -88,10 +69,6 @@ class AuditService {
         return auditEntry.id;
     }
 
-    /**
-     * Log authentication events
-     * @param {Object} params - Authentication parameters
-     */
     logAuthEvent(params) {
         const auditEntry = {
             id: uuidv4(),
@@ -109,10 +86,6 @@ class AuditService {
         return auditEntry.id;
     }
 
-    /**
-     * Log system events
-     * @param {Object} params - System event parameters
-     */
     logSystemEvent(params) {
         const auditEntry = {
             id: uuidv4(),
@@ -127,12 +100,6 @@ class AuditService {
         return auditEntry.id;
     }
 
-    /**
-     * Generate audit report for a specific time range
-     * @param {Date} startDate - Start date
-     * @param {Date} endDate - End date
-     * @param {Object} filters - Additional filters
-     */
     generateAuditReport(startDate, endDate, filters = {}) {
         // This would typically query a database or log files
         // For now, we'll log the report request
@@ -148,12 +115,6 @@ class AuditService {
         this.auditLogger.info('Audit report requested', reportRequest);
         return reportRequest.id;
     }
-
-    /**
-     * Create audit context from request
-     * @param {Object} req - Express request object
-     * @returns {Object} Audit context
-     */
     createAuditContext(req) {
         return {
             requestId: req.id || uuidv4(),

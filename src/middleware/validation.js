@@ -1,58 +1,36 @@
-/**
- * Request Validation Middleware
- * Validates incoming requests using Joi schemas
- */
-const Joi = require('joi');
-const logger = require('../config/logger');
+const Joi = require("joi");
+const logger = require("../config/logger");
 
 // Common validation schemas
 const schemas = {
-  // Range validation schema (supports optional Sheet! prefix)
-  // Examples: "A1:B2", "Sheet1!A1:D10"
   range: Joi.string()
-    .pattern(/^(?:[^!\n\r]+!)?(?:[A-Z]+\d+:[A-Z]+\d+|[A-Z]+\d+|[A-Z]+:[A-Z]+|\d+:\d+)$/)
+    .pattern(
+      /^(?:[^!\n\r]+!)?(?:[A-Z]+\d+:[A-Z]+\d+|[A-Z]+\d+|[A-Z]+:[A-Z]+|\d+:\d+)$/
+    )
     .required(),
-
-  // Workbook ID validation
   workbookId: Joi.string().min(1).max(255),
-
-  // Worksheet ID validation
   worksheetId: Joi.string().min(1).max(255),
-
-  // Drive ID validation
   driveId: Joi.string().min(1).max(255),
-
-  // Drive Name validation
   driveName: Joi.string().min(1).max(255),
-
-  // Item Name (file name) validation
   itemName: Joi.string().min(1).max(255),
-
-  // Worksheet Name validation
   worksheetName: Joi.string().min(1).max(255),
-
-  // Table name validation
   tableName: Joi.string().min(1).max(255),
-
-  // Values array validation (2D array)
   values: Joi.array().items(Joi.array()).min(1),
-
-  // Single row validation
   rows: Joi.array().items(Joi.array()).min(1),
-
-  // User ID validation
   userId: Joi.string().email().optional(),
-
-  // Additional helpers
-  xlsxFileName: Joi.string().pattern(/\.xlsx$/i).message('fileName must end with .xlsx'),
+  xlsxFileName: Joi.string()
+    .pattern(/\.xlsx$/i)
+    .message("fileName must end with .xlsx"),
   parentPath: Joi.string().pattern(/^\//).optional(),
   position: Joi.number().integer().min(0).optional(),
   itemPath: Joi.string().pattern(/^\//).optional(),
-  force: Joi.boolean().optional()
+  force: Joi.boolean().optional(),
 };
 
 // Helper to validate .xlsx filenames
-schemas.xlsxFileName = Joi.string().pattern(/\.xlsx$/i).message('fileName must end with .xlsx');
+schemas.xlsxFileName = Joi.string()
+  .pattern(/\.xlsx$/i)
+  .message("fileName must end with .xlsx");
 schemas.parentPath = Joi.string().pattern(/^\//).optional();
 schemas.position = Joi.number().integer().min(0).optional();
 schemas.itemPath = Joi.string().pattern(/^\//).optional();
@@ -61,127 +39,128 @@ schemas.itemPath = Joi.string().pattern(/^\//).optional();
 const namesOnlyBase = Joi.object({
   driveName: schemas.driveName.required(),
   itemName: schemas.itemName.required(),
-  itemPath: schemas.itemPath.optional()
+  itemPath: schemas.itemPath.optional(),
 });
 
-// Request validation schemas
 const requestSchemas = {
-  // Read range request (names-only)
-  readRange: namesOnlyBase.concat(Joi.object({
-    worksheetName: schemas.worksheetName.optional(),
-    range: schemas.range.required()
-  })),
+  readRange: namesOnlyBase.concat(
+    Joi.object({
+      worksheetName: schemas.worksheetName.optional(),
+      range: schemas.range.required(),
+    })
+  ),
 
-  // Write range request (names-only)
-  writeRange: namesOnlyBase.concat(Joi.object({
-    worksheetName: schemas.worksheetName.optional(),
-    range: schemas.range.required(),
-    values: schemas.values.required()
-  })),
+  writeRange: namesOnlyBase.concat(
+    Joi.object({
+      worksheetName: schemas.worksheetName.optional(),
+      range: schemas.range.required(),
+      values: schemas.values.required(),
+    })
+  ),
 
-  // Read table request (names-only)
-  readTable: namesOnlyBase.concat(Joi.object({
-    worksheetName: schemas.worksheetName.optional(),
-    tableName: schemas.tableName.required()
-  })),
+  readTable: namesOnlyBase.concat(
+    Joi.object({
+      worksheetName: schemas.worksheetName.optional(),
+      tableName: schemas.tableName.required(),
+    })
+  ),
 
-  // Add table rows request (names-only)
-  addTableRows: namesOnlyBase.concat(Joi.object({
-    worksheetName: schemas.worksheetName.optional(),
-    tableName: schemas.tableName.required(),
-    rows: schemas.rows.required()
-  })),
+  addTableRows: namesOnlyBase.concat(
+    Joi.object({
+      worksheetName: schemas.worksheetName.optional(),
+      tableName: schemas.tableName.required(),
+      rows: schemas.rows.required(),
+    })
+  ),
 
-  // Get worksheets request (names-only)
   getWorksheets: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
-    itemPath: schemas.itemPath.optional()
+    itemPath: schemas.itemPath.optional(),
   }),
 
-  // New: Create file
+  searchFiles: Joi.object({
+    driveName: schemas.driveName.required(),
+    fileName: Joi.string().min(1).required(),
+  }),
+
   createFile: Joi.object({
     driveName: schemas.driveName.required(),
     parentPath: schemas.parentPath,
     fileName: schemas.xlsxFileName.required(),
-    template: Joi.string().valid('blank').default('blank')
+    template: Joi.string().valid("blank").default("blank"),
   }),
 
-  // New: Create sheet
   createSheet: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
     itemPath: schemas.itemPath.optional(),
     sheetName: schemas.worksheetName.required(),
-    position: schemas.position
+    position: schemas.position,
   }),
 
-  // New: Delete file (either itemId, or itemName with optional itemPath)
   deleteFile: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
     itemPath: schemas.itemPath.optional(),
-    force: schemas.force
+    force: schemas.force,
   }),
 
-  // New: Delete sheet
   deleteSheet: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
     itemPath: schemas.itemPath.optional(),
-    sheetName: schemas.worksheetName.required()
+    sheetName: schemas.worksheetName.required(),
   }),
 
-  // Analyze scope (GET query) - names only
   analyzeScope: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
-    itemPath: schemas.itemPath.optional()
+    itemPath: schemas.itemPath.optional(),
   }),
 
-  // Cell info (GET query) - names only
   cellInfo: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
     itemPath: schemas.itemPath.optional(),
     sheetName: schemas.worksheetName.optional(),
-    cellAddress: Joi.string().min(1).required()
+    cellAddress: Joi.string().min(1).required(),
   }),
 
-  // Worksheet info (GET query) - names only
   worksheetInfo: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
     itemPath: schemas.itemPath.optional(),
-    sheetName: schemas.worksheetName.optional()
+    sheetName: schemas.worksheetName.optional(),
   }),
 
-  // Find & Replace (POST body) - names only
   findReplace: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
     itemPath: schemas.itemPath.optional(),
     searchTerm: Joi.string().min(1).required(),
-    replaceTerm: Joi.string().allow('').optional(),
-    scope: Joi.string().valid('header_only','specific_range','entire_sheet','all_sheets').default('entire_sheet'),
+    replaceTerm: Joi.string().allow("").optional(),
+    scope: Joi.string()
+      .valid("header_only", "specific_range", "entire_sheet", "all_sheets")
+      .default("entire_sheet"),
     rangeSpec: Joi.string().optional(),
     highlightChanges: Joi.boolean().optional(),
     logChanges: Joi.boolean().optional(),
     confirm: Joi.boolean().optional(),
-    previewId: Joi.string().optional()
+    previewId: Joi.string().optional(),
   }),
 
-  // Search text (POST body) - names only
   searchText: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
     itemPath: schemas.itemPath.optional(),
     searchTerm: Joi.string().min(1).required(),
-    scope: Joi.string().valid('header_only','specific_range','entire_sheet','all_sheets').default('entire_sheet'),
-    rangeSpec: Joi.string().optional()
+    scope: Joi.string()
+      .valid("header_only", "specific_range", "entire_sheet", "all_sheets")
+      .default("entire_sheet"),
+    rangeSpec: Joi.string().optional(),
   }),
 
-  // Excel format (POST body) - names only
   excelFormat: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
@@ -191,11 +170,10 @@ const requestSchemas = {
     formula: Joi.object({
       expression: Joi.string().min(1).required(),
       targetCell: Joi.string().min(1).required(),
-      overwrite: Joi.boolean().optional()
-    }).optional()
+      overwrite: Joi.boolean().optional(),
+    }).optional(),
   }),
 
-  // Validate formula (POST body) - names only
   validateFormula: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
@@ -204,176 +182,170 @@ const requestSchemas = {
     formula: Joi.object({
       expression: Joi.string().min(1).required(),
       targetCell: Joi.string().min(1).optional(),
-      overwrite: Joi.boolean().optional()
-    }).required()
-  })
+      overwrite: Joi.boolean().optional(),
+    }).required(),
+  }),
 };
 
 const isValidRange = (range) => {
-    const rangeRegex = /^[A-Z]+\d+:[A-Z]+\d+$|^[A-Z]+\d+$|^[A-Z]+:[A-Z]+$|^\d+:\d+$/;
-    return rangeRegex.test(range);
+  const rangeRegex =
+    /^[A-Z]+\d+:[A-Z]+\d+$|^[A-Z]+\d+$|^[A-Z]+:[A-Z]+$|^\d+:\d+$/;
+  return rangeRegex.test(range);
 };
-/**
- * Validate 2D array structure for Excel values
- * @param {Array} values - Values array
- * @returns {Object} Validation result
- */
 const validateValuesArray = (values) => {
-    if (!Array.isArray(values)) {
-        return { valid: false, message: 'Values must be an array' };
+  if (!Array.isArray(values)) {
+    return { valid: false, message: "Values must be an array" };
+  }
+
+  if (values.length === 0) {
+    return { valid: false, message: "Values array cannot be empty" };
+  }
+
+  // Check if all rows are arrays and have consistent length
+  const firstRowLength = Array.isArray(values[0]) ? values[0].length : 1;
+
+  for (let i = 0; i < values.length; i++) {
+    if (!Array.isArray(values[i])) {
+      return { valid: false, message: `Row ${i} must be an array` };
     }
 
-    if (values.length === 0) {
-        return { valid: false, message: 'Values array cannot be empty' };
+    if (values[i].length !== firstRowLength) {
+      return {
+        valid: false,
+        message: `All rows must have the same length. Row ${i} has ${values[i].length} columns, expected ${firstRowLength}`,
+      };
     }
+  }
 
-    // Check if all rows are arrays and have consistent length
-    const firstRowLength = Array.isArray(values[0]) ? values[0].length : 1;
-
-    for (let i = 0; i < values.length; i++) {
-        if (!Array.isArray(values[i])) {
-            return { valid: false, message: `Row ${i} must be an array` };
-        }
-
-        if (values[i].length !== firstRowLength) {
-            return { valid: false, message: `All rows must have the same length. Row ${i} has ${values[i].length} columns, expected ${firstRowLength}` };
-        }
-    }
-
-    return { valid: true, rows: values.length, columns: firstRowLength };
+  return { valid: true, rows: values.length, columns: firstRowLength };
 };
 
-/**
- * Middleware to validate range and values compatibility
- */
 const validateRangeValuesCompatibility = (req, res, next) => {
-    const { range, values } = req.body;
+  const { range, values } = req.body;
 
-    if (!range || !values) {
-        return next();
-    }
+  if (!range || !values) {
+    return next();
+  }
 
-    try {
-        const rangeParts = range.split(':');
-        if (rangeParts.length === 2) {
-            const startCell = rangeParts[0];
-            const endCell = rangeParts[1];
+  try {
+    const rangeParts = range.split(":");
+    if (rangeParts.length === 2) {
+      const startCell = rangeParts[0];
+      const endCell = rangeParts[1];
+      const startColMatch = startCell.match(/[A-Z]+/);
+      const startRowMatch = startCell.match(/\d+/);
+      const endColMatch = endCell.match(/[A-Z]+/);
+      const endRowMatch = endCell.match(/\d+/);
 
-            const startColMatch = startCell.match(/[A-Z]+/);
-            const startRowMatch = startCell.match(/\d+/);
-            const endColMatch = endCell.match(/[A-Z]+/);
-            const endRowMatch = endCell.match(/\d+/);
+      if (startColMatch && startRowMatch && endColMatch && endRowMatch) {
+        const expectedRows =
+          parseInt(endRowMatch[0]) - parseInt(startRowMatch[0]) + 1;
+        const expectedCols =
+          columnToNumber(endColMatch[0]) - columnToNumber(startColMatch[0]) + 1;
 
-            if (startColMatch && startRowMatch && endColMatch && endRowMatch) {
-                const expectedRows = parseInt(endRowMatch[0]) - parseInt(startRowMatch[0]) + 1;
-                const expectedCols = columnToNumber(endColMatch[0]) - columnToNumber(startColMatch[0]) + 1;
-
-                if (values.length !== expectedRows || (values[0] && values[0].length !== expectedCols)) {
-                    return res.status(400).json({
-                        error: 'Range-values mismatch',
-                        message: `Range expects ${expectedRows}x${expectedCols}, got ${values.length}x${values[0]?.length || 0}`,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-            }
+        if (
+          values.length !== expectedRows ||
+          (values[0] && values[0].length !== expectedCols)
+        ) {
+          return res.status(400).json({
+            error: "Range-values mismatch",
+            message: `Range expects ${expectedRows}x${expectedCols}, got ${
+              values.length
+            }x${values[0]?.length || 0}`,
+            timestamp: new Date().toISOString(),
+          });
         }
-
-        next();
-    } catch (error) {
-        // Continue - let Graph API handle validation
-        next();
+      }
     }
-};
-
-/**
- * Convert column letter to number (A=1, B=2, etc.)
- * @param {string} column - Column letter(s)
- * @returns {number} Column number
- */
-function columnToNumber(column) {
-    let result = 0;
-    for (let i = 0; i < column.length; i++) {
-        result = result * 26 + (column.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
-    }
-    return result;
-}
-
-/**
- * Sanitize user input to prevent injection attacks
- * @param {string} input - Input string
- * @returns {string} Sanitized string
- */
-const sanitizeInput = (input) => {
-    if (typeof input !== 'string') {
-        return input;
-    }
-
-    // Remove potentially dangerous characters but preserve Excel formulas
-    return input.replace(/[<>"';]/g, '');
-};
-
-/**
- * Middleware to sanitize all string inputs in request
- */
-const sanitizeRequest = (req, res, next) => {
-    const sanitizeObject = (obj) => {
-        if (typeof obj === 'string') {
-            return sanitizeInput(obj);
-        } else if (Array.isArray(obj)) {
-            return obj.map(sanitizeObject);
-        } else if (obj && typeof obj === 'object') {
-            const sanitized = {};
-            for (const [key, value] of Object.entries(obj)) {
-                sanitized[key] = sanitizeObject(value);
-            }
-            return sanitized;
-        }
-        return obj;
-    };
-
-    req.body = sanitizeObject(req.body);
-    req.query = sanitizeObject(req.query);
-    req.params = sanitizeObject(req.params);
 
     next();
+  } catch (error) {
+    // Continue - let Graph API handle validation
+    next();
+  }
 };
 
-// Create validation middleware for a specific schema
-// Supports a special source 'queryOrBody' that merges query and body for flexible DELETE patterns
-const validateRequest = (schemaName, source = 'body') => {
+function columnToNumber(column) {
+  let result = 0;
+  for (let i = 0; i < column.length; i++) {
+    result = result * 26 + (column.charCodeAt(i) - "A".charCodeAt(0) + 1);
+  }
+  return result;
+}
+
+const sanitizeInput = (input) => {
+  if (typeof input !== "string") {
+    return input;
+  }
+  return input.replace(/[<>"';]/g, "");
+};
+
+const sanitizeRequest = (req, next) => {
+  const sanitizeObject = (obj) => {
+    if (typeof obj === "string") {
+      return sanitizeInput(obj);
+    } else if (Array.isArray(obj)) {
+      return obj.map(sanitizeObject);
+    } else if (obj && typeof obj === "object") {
+      const sanitized = {};
+      for (const [key, value] of Object.entries(obj)) {
+        sanitized[key] = sanitizeObject(value);
+      }
+      return sanitized;
+    }
+    return obj;
+  };
+
+  req.body = sanitizeObject(req.body);
+  req.query = sanitizeObject(req.query);
+  req.params = sanitizeObject(req.params);
+
+  next();
+};
+
+const validateRequest = (schemaName, source = "body") => {
   return (req, res, next) => {
     const schema = requestSchemas[schemaName];
     if (!schema) {
       logger.error(`Validation schema '${schemaName}' not found`);
       return res.status(500).json({
-        error: 'Validation configuration error',
+        error: "Validation configuration error",
         message: `Schema '${schemaName}' is not defined`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
 
-    const dataToValidate = source === 'queryOrBody' ? { ...(req.query || {}), ...(req.body || {}) } : req[source];
-    const { error, value } = schema.validate(dataToValidate, { abortEarly: false, stripUnknown: true });
+    const dataToValidate =
+      source === "queryOrBody"
+        ? { ...(req.query || {}), ...(req.body || {}) }
+        : req[source];
+    const { error, value } = schema.validate(dataToValidate, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
 
     if (error) {
-      const errorDetails = error.details.map(detail => ({
-        field: detail.path.join('.'),
+      const errorDetails = error.details.map((detail) => ({
+        field: detail.path.join("."),
         message: detail.message,
-        value: detail.context?.value
+        value: detail.context?.value,
       }));
-      logger.warn('Request validation failed', { schema: schemaName, errors: errorDetails });
+      logger.warn("Request validation failed", {
+        schema: schemaName,
+        errors: errorDetails,
+      });
       return res.status(400).json({
-        status: 'error',
+        status: "error",
         error: {
           code: 400,
-          message: 'Request data is invalid',
-          details: errorDetails
+          message: "Request data is invalid",
+          details: errorDetails,
         },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
 
-    if (source === 'queryOrBody') {
+    if (source === "queryOrBody") {
       req.body = value; // normalize merged payload into body for controllers
     } else {
       req[source] = value;
@@ -389,5 +361,5 @@ module.exports = {
   isValidRange,
   validateValuesArray,
   schemas,
-  requestSchemas
+  requestSchemas,
 };

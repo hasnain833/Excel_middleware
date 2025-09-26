@@ -1,8 +1,3 @@
-/**
- * Application Constants
- * Defines constants used throughout the application
- */
-
 // HTTP Status Codes
 const HTTP_STATUS = {
     OK: 200,

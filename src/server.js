@@ -1,30 +1,19 @@
-/**
- * Main Server File
- * Express server setup with all middleware and routes
- */
-
 require("dotenv").config();
 require("express-async-errors");
 
 const express = require("express");
 const helmet = require("helmet");
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4 } = require("uuid");
 const cors = require("cors");
-
-// Import middleware
 const {
   globalErrorHandler,
   handleNotFound,
   handleUnhandledRejections,
 } = require("./middleware/errorHandler");
 const { generalLimiter } = require("./middleware/rateLimiter");
-
-// Import routes
 const excelRoutes = require("./routes/excel");
 const renameRoutes = require("./routes/rename");
 const healthRoutes = require("./routes/health");
-
-// Import services
 const logger = require("./config/logger");
 const auditService = require("./services/auditService");
 
@@ -37,20 +26,20 @@ class Server {
     this.port = process.env.PORT || 3000;
     try {
       this.setupMiddleware();
-      logger.info('Server middleware setup complete');
+      logger.info("Server middleware setup complete");
       this.setupRoutes();
-      logger.info('Server routes setup complete');
+      logger.info("Server routes setup complete");
       this.setupErrorHandling();
-      logger.info('Server error handling setup complete');
+      logger.info("Server error handling setup complete");
     } catch (err) {
-      logger.error('Server initialization failed in constructor', { error: err.message, stack: err.stack });
+      logger.error("Server initialization failed in constructor", {
+        error: err.message,
+        stack: err.stack,
+      });
       throw err;
     }
   }
 
-  /**
-   * Setup Express middleware
-   */
   setupMiddleware() {
     // Trust proxy if behind reverse proxy
     if (process.env.TRUST_PROXY === "true") {
@@ -125,9 +114,6 @@ class Server {
     this.app.use(generalLimiter);
   }
 
-  /**
-   * Setup application routes
-   */
   setupRoutes() {
     // Health check routes (no authentication required)
     this.app.use("/health", healthRoutes);
@@ -143,191 +129,6 @@ class Server {
         version: process.env.npm_package_version || "1.0.0",
         status: "running",
         timestamp: new Date().toISOString(),
-        endpoints: {
-          health: "/health",
-          api: "/api/excel",
-          documentation: "/api/docs",
-        },
-      });
-    });
-
-    // API documentation endpoint
-    this.app.get("/api/docs", (req, res) => {
-      res.json({
-        service: "Excel GPT Middleware API",
-        version: "1.0.0",
-        endpoints: {
-          workbooks: {
-            method: "GET",
-            path: "/api/excel/workbooks",
-            description: "Get all accessible workbooks",
-          },
-          worksheets: {
-            method: "GET",
-            path: "/api/excel/worksheets",
-            description: "Get worksheets in a workbook",
-            parameters: ["driveName", "itemName", "itemPath (optional)"],
-          },
-          readRange: {
-            method: "POST",
-            path: "/api/excel/read",
-            description: "Read data from Excel range",
-            body: ["driveName", "itemName", "itemPath (optional)", "worksheetName (optional)", "range"],
-          },
-          writeRange: {
-            method: "POST",
-            path: "/api/excel/write",
-            description: "Write data to Excel range",
-            body: ["driveName", "itemName", "itemPath (optional)", "worksheetName (optional)", "range", "values"],
-          },
-          readTable: {
-            method: "POST",
-            path: "/api/excel/read-table",
-            description: "Read data from Excel table",
-            body: ["driveName", "itemName", "itemPath (optional)", "worksheetName (optional)", "tableName"],
-          },
-          addTableRows: {
-            method: "POST",
-            path: "/api/excel/add-table-rows",
-            description: "Add rows to Excel table",
-            body: ["driveName", "itemName", "itemPath (optional)", "worksheetName (optional)", "tableName", "rows"],
-          },
-          batch: {
-            method: "POST",
-            path: "/api/excel/batch",
-            description: "Perform batch Excel operations",
-            body: ["operations"],
-          },
-          renameFile: {
-            method: "POST",
-            path: "/api/excel/rename-file",
-            description: "Rename an Excel file",
-            body: ["driveName", "itemName", "newName", "itemPath (optional)"],
-          },
-          renameFolder: {
-            method: "POST",
-            path: "/api/excel/rename-folder",
-            description: "Rename a folder",
-            body: ["driveName", "folderPath", "newName"],
-          },
-          renameSheet: {
-            method: "POST",
-            path: "/api/excel/rename-sheet",
-            description: "Rename an Excel worksheet",
-            body: ["driveName", "itemName", "oldSheetName", "newSheetName", "itemPath (optional)"],
-          },
-          renameSuggestions: {
-            method: "POST",
-            path: "/api/excel/rename-suggestions",
-            description: "Get intelligent rename suggestions",
-            body: ["driveId", "oldTerm", "newTerm"],
-          },
-          batchRename: {
-            method: "POST",
-            path: "/api/excel/batch-rename",
-            description: "Perform multiple rename operations",
-            body: ["driveId", "operations"],
-          },
-          findReplace: {
-            method: "POST",
-            path: "/api/excel/find-replace",
-            description:
-              "Find and replace text in Excel files with intelligent scoping",
-            body: ["driveName", "itemName", "itemPath (optional)", "searchTerm", "replaceTerm (optional)", "scope", "rangeSpec (optional)", "confirm (optional)", "highlightChanges (optional)", "logChanges (optional)", "previewId (optional)"],
-          },
-          searchText: {
-            method: "POST",
-            path: "/api/excel/search-text",
-            description: "Search for text in Excel files without replacement",
-            body: ["driveName", "itemName", "itemPath (optional)", "searchTerm", "scope", "rangeSpec (optional)"],
-          },
-          analyzeScope: {
-            method: "GET",
-            path: "/api/excel/analyze-scope",
-            description: "Analyze Excel file structure for scope planning",
-            parameters: ["driveName", "itemName", "itemPath (optional)"],
-          },
-          format: {
-            method: "POST",
-            path: "/api/excel/format",
-            description:
-              "Apply comprehensive Excel formatting, formulas, and advanced features",
-            body: ["driveName", "itemName", "itemPath (optional)", "sheetName (optional)", "operations (optional)", "formula (optional)"],
-          },
-          validateFormula: {
-            method: "POST",
-            path: "/api/excel/validate-formula",
-            description: "Validate Excel formula syntax before insertion",
-            body: ["driveName", "itemName", "itemPath (optional)", "sheetName (optional)", "formula"],
-          },
-          cellInfo: {
-            method: "GET",
-            path: "/api/excel/cell-info",
-            description:
-              "Get comprehensive cell information (value, formula, formatting)",
-            parameters: ["driveName", "itemName", "itemPath (optional)", "sheetName (optional)", "cellAddress"],
-          },
-          functions: {
-            method: "GET",
-            path: "/api/excel/functions",
-            description:
-              "Get available Excel functions and formulas by category",
-            parameters: ["category (optional)"],
-          },
-          worksheetInfo: {
-            method: "GET",
-            path: "/api/excel/worksheet-info",
-            description: "Get worksheet structure and metadata",
-            parameters: ["driveName", "itemName", "itemPath (optional)", "sheetName (optional)"],
-          },
-          createFile: {
-            method: "POST",
-            path: "/api/excel/create-file",
-            description: "Create a new Excel file in a drive/folder",
-            body: [
-              "driveName",
-              "parentPath (optional)",
-              "fileName (.xlsx)",
-            ],
-          },
-          createSheet: {
-            method: "POST",
-            path: "/api/excel/create-sheet",
-            description: "Add a worksheet to an existing workbook",
-            body: [
-              "driveName",
-              "itemName (itemPath optional)",
-              "sheetName",
-              "position (optional)",
-            ],
-          },
-          deleteFile: {
-            method: "DELETE",
-            path: "/api/excel/delete-file",
-            description: "Delete a workbook by name (use itemPath to disambiguate)",
-            body: [
-              "driveName",
-              "itemName (itemPath optional)",
-              "force (optional)",
-            ],
-          },
-          deleteSheet: {
-            method: "DELETE",
-            path: "/api/excel/delete-sheet",
-            description:
-              "Delete a worksheet from an existing workbook (not the last sheet)",
-            body: [
-              "driveName",
-              "itemName (itemPath optional)",
-              "sheetName",
-            ],
-          },
-        },
-        authentication: {
-          type: "Azure AD Client Credentials",
-          description:
-            "Automatic authentication using Azure AD service principal",
-        },
       });
     });
 
@@ -335,16 +136,9 @@ class Server {
     this.app.use(handleNotFound);
   }
 
-  /**
-   * Setup error handling
-   */
   setupErrorHandling() {
     this.app.use(globalErrorHandler);
   }
-
-  /**
-   * Start the server
-   */
   async start() {
     try {
       // Log system startup
@@ -368,7 +162,6 @@ class Server {
         logger.info("📋 Available endpoints:", {
           health: `http://localhost:${this.port}/health`,
           api: `http://localhost:${this.port}/api/excel`,
-          docs: `http://localhost:${this.port}/api/docs`,
         });
       });
 
@@ -385,9 +178,6 @@ class Server {
     }
   }
 
-  /**
-   * Setup graceful shutdown
-   */
   setupGracefulShutdown() {
     const gracefulShutdown = (signal) => {
       logger.info(`Received ${signal}. Starting graceful shutdown...`);
@@ -421,9 +211,6 @@ class Server {
     process.on("SIGINT", () => gracefulShutdown("SIGINT"));
   }
 
-  /**
-   * Stop the server
-   */
   async stop() {
     return new Promise((resolve, reject) => {
       if (this.server) {

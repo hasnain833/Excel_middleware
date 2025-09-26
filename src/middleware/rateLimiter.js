@@ -1,14 +1,6 @@
-/**
- * Rate Limiting Middleware
- * Protects the API from abuse and ensures fair usage
- */
-
 const rateLimit = require('express-rate-limit');
 const logger = require('../config/logger');
-
-/**
- * General API rate limiter
- */
+require('dotenv').config();
 const generalLimiter = rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
     max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // Limit each IP to 100 requests per windowMs
@@ -37,9 +29,6 @@ const generalLimiter = rateLimit({
     }
 });
 
-/**
- * Strict rate limiter for write operations
- */
 const writeLimiter = rateLimit({
     windowMs: 5 * 60 * 1000, // 5 minutes
     max: 20, // Limit write operations to 20 per 5 minutes
@@ -68,9 +57,7 @@ const writeLimiter = rateLimit({
     }
 });
 
-/**
- * Authentication rate limiter (more restrictive)
- */
+
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // Limit auth attempts to 5 per 15 minutes
@@ -99,11 +86,7 @@ const authLimiter = rateLimit({
     }
 });
 
-/**
- * Create a custom rate limiter with specific configuration
- * @param {Object} options - Rate limiter options
- * @returns {Function} Rate limiter middleware
- */
+
 const createCustomLimiter = (options) => {
     const defaultOptions = {
         windowMs: 15 * 60 * 1000,
@@ -120,12 +103,7 @@ const createCustomLimiter = (options) => {
     return rateLimit({ ...defaultOptions, ...options });
 };
 
-/**
- * Dynamic rate limiter based on user type
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Next middleware function
- */
+
 const dynamicLimiter = (req, res, next) => {
     const userType = req.headers['x-user-type'] || 'standard';
     const userId = req.headers['x-user-id'];
@@ -183,11 +161,7 @@ const dynamicLimiter = (req, res, next) => {
     limiter(req, res, next);
 };
 
-/**
- * Skip rate limiting for certain conditions
- * @param {Object} req - Express request object
- * @returns {boolean} True to skip rate limiting
- */
+
 const skipRateLimit = (req) => {
     // Skip rate limiting for health checks
     if (req.path === '/health' || req.path === '/health/detailed') {
@@ -208,9 +182,7 @@ const skipRateLimit = (req) => {
     return false;
 };
 
-/**
- * Rate limiter with skip logic
- */
+
 const conditionalLimiter = rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
     max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,

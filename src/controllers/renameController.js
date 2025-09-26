@@ -1,8 +1,3 @@
-/**
- * Rename Controller
- * Handles HTTP requests for renaming files, folders, and sheets
- */
-
 const renameService = require('../services/renameService');
 const resolverService = require('../services/resolverService');
 const auditService = require('../services/auditService');
@@ -11,20 +6,16 @@ const { catchAsync } = require('../middleware/errorHandler');
 const { AppError } = require('../middleware/errorHandler');
 
 class RenameController {
-  
-  /**
-   * Rename a file
-   * POST /api/excel/rename-file
-   */
+
   renameFile = catchAsync(async (req, res) => {
-    const { 
-      driveName, 
-      itemName, 
+    const {
+      driveName,
+      itemName,
       itemPath,
-      oldName, 
-      newName 
+      oldName,
+      newName
     } = req.body;
-    
+
     const auditContext = auditService.createAuditContext(req);
 
     if (!newName) {
@@ -71,19 +62,15 @@ class RenameController {
     });
   });
 
-  /**
-   * Rename a folder
-   * POST /api/excel/rename-folder
-   */
   renameFolder = catchAsync(async (req, res) => {
-    const { 
-      driveName, 
-      folderName, 
+    const {
+      driveName,
+      folderName,
       folderPath,
-      oldName, 
-      newName 
+      oldName,
+      newName
     } = req.body;
-    
+
     const auditContext = auditService.createAuditContext(req);
 
     if (!newName) {
@@ -104,11 +91,11 @@ class RenameController {
     if (effectiveFolderName) {
       const graphClient = resolverService.createGraphClient(req.accessToken);
       const matches = await this.findFoldersByName(graphClient, resolvedDriveId, effectiveFolderName);
-      
+
       if (matches.length === 0) {
         throw new AppError(`Folder '${effectiveFolderName}' not found`, 404);
       }
-      
+
       if (matches.length > 1) {
         if (folderPath) {
           const match = matches.find(m => m.path === folderPath);
@@ -155,19 +142,16 @@ class RenameController {
     });
   });
 
-  /**
-   * Rename an Excel worksheet
-   * POST /api/excel/rename-sheet
-   */
+
   renameSheet = catchAsync(async (req, res) => {
-    const { 
-      driveName, 
-      itemName, 
+    const {
+      driveName,
+      itemName,
       itemPath,
-      oldSheetName, 
-      newSheetName 
+      oldSheetName,
+      newSheetName
     } = req.body;
-    
+
     const auditContext = auditService.createAuditContext(req);
 
     if (!oldSheetName || !newSheetName) {
@@ -213,17 +197,13 @@ class RenameController {
     });
   });
 
-  /**
-   * Get intelligent rename suggestions
-   * POST /api/excel/rename-suggestions
-   */
   getRenameSuggestions = catchAsync(async (req, res) => {
-    const { 
-      driveName, 
-      oldTerm, 
-      newTerm 
+    const {
+      driveName,
+      oldTerm,
+      newTerm
     } = req.body;
-    
+
     const auditContext = auditService.createAuditContext(req);
 
     if (!oldTerm || !newTerm) {
@@ -260,23 +240,20 @@ class RenameController {
         oldTerm,
         newTerm,
         suggestions,
-        message: suggestions.length > 0 
+        message: suggestions.length > 0
           ? `Found ${suggestions.length} items that might need renaming`
           : 'No related items found that need renaming'
       }
     });
   });
 
-  /**
-   * Batch rename multiple items
-   * POST /api/excel/batch-rename
-   */
+
   batchRename = catchAsync(async (req, res) => {
-    const { 
-      driveName, 
-      operations 
+    const {
+      driveName,
+      operations
     } = req.body;
-    
+
     const auditContext = auditService.createAuditContext(req);
 
     if (!Array.isArray(operations) || operations.length === 0) {
@@ -299,10 +276,10 @@ class RenameController {
       auditContext
     );
 
-    const statusCode = result.errors.length > 0 && result.results.length > 0 
+    const statusCode = result.errors.length > 0 && result.results.length > 0
       ? 207 // Multi-Status
-      : result.errors.length === 0 
-        ? 200 
+      : result.errors.length === 0
+        ? 200
         : 400;
 
     res.status(statusCode).json({
@@ -311,21 +288,16 @@ class RenameController {
     });
   });
 
-  /**
-   * Helper method to find folders by name
-   */
   async findFoldersByName(graphClient, driveId, folderName) {
-    const matches = [];
-    
     try {
       // Use the recursive search from renameService but filter for folders only
       const allItems = await renameService.recursiveSearch(graphClient, driveId, folderName);
-      
-      return allItems.filter(item => 
-        item.folder && 
+
+      return allItems.filter(item =>
+        item.folder &&
         item.name.toLowerCase() === folderName.toLowerCase()
       );
-      
+
     } catch (err) {
       logger.error('Failed to find folders by name', {
         driveId,

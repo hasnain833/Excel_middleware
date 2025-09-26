@@ -1,14 +1,8 @@
-/**
- * Find Replace Service
- * Handles intelligent find and replace operations in Excel files
- * Supports scope-aware searching, highlighting, and change logging
- */
-
-const { Client } = require('@microsoft/microsoft-graph-client');
-const logger = require('../config/logger');
-const resolverService = require('./resolverService');
-const auditService = require('./auditService');
-const { AppError } = require('../middleware/errorHandler');
+const { Client } = require("@microsoft/microsoft-graph-client");
+const logger = require("../config/logger");
+const resolverService = require("./resolverService");
+const auditService = require("./auditService");
+const { AppError } = require("../middleware/errorHandler");
 
 class FindReplaceService {
   constructor() {
@@ -23,18 +17,22 @@ class FindReplaceService {
     });
   }
 
-  /**
-   * Find all occurrences of a search term in Excel file
-   */
-  async findOccurrences(accessToken, driveId, itemId, searchTerm, scope = 'entire_sheet', rangeSpec = null) {
+  async findOccurrences(
+    accessToken,
+    driveId,
+    itemId,
+    searchTerm,
+    scope = "entire_sheet",
+    rangeSpec = null
+  ) {
     if (!driveId || !itemId || !searchTerm) {
-      throw new AppError('driveId, itemId, and searchTerm are required', 400);
+      throw new AppError("driveId, itemId, and searchTerm are required", 400);
     }
 
     const cacheKey = `${driveId}:${itemId}:${searchTerm}:${scope}:${rangeSpec}`;
     const cached = this.searchCache.get(cacheKey);
-    
-    if (cached && (Date.now() - cached.ts) < this.ttlMs) {
+
+    if (cached && Date.now() - cached.ts < this.ttlMs) {
       return cached.results;
     }
 
@@ -43,29 +41,53 @@ class FindReplaceService {
       const matches = [];
 
       switch (scope) {
-        case 'header_only':
-          const headerMatches = await this.findInHeaders(graphClient, driveId, itemId, searchTerm);
+        case "header_only":
+          const headerMatches = await this.findInHeaders(
+            graphClient,
+            driveId,
+            itemId,
+            searchTerm
+          );
           matches.push(...headerMatches);
           break;
-          
-        case 'specific_range':
+
+        case "specific_range":
           if (!rangeSpec) {
-            throw new AppError('rangeSpec is required for specific_range scope', 400);
+            throw new AppError(
+              "rangeSpec is required for specific_range scope",
+              400
+            );
           }
-          const rangeMatches = await this.findInRange(graphClient, driveId, itemId, searchTerm, rangeSpec);
+          const rangeMatches = await this.findInRange(
+            graphClient,
+            driveId,
+            itemId,
+            searchTerm,
+            rangeSpec
+          );
           matches.push(...rangeMatches);
           break;
-          
-        case 'entire_sheet':
-          const sheetMatches = await this.findInSheet(graphClient, driveId, itemId, searchTerm);
+
+        case "entire_sheet":
+          const sheetMatches = await this.findInSheet(
+            graphClient,
+            driveId,
+            itemId,
+            searchTerm
+          );
           matches.push(...sheetMatches);
           break;
-          
-        case 'all_sheets':
-          const allSheetsMatches = await this.findInAllSheets(graphClient, driveId, itemId, searchTerm);
+
+        case "all_sheets":
+          const allSheetsMatches = await this.findInAllSheets(
+            graphClient,
+            driveId,
+            itemId,
+            searchTerm
+          );
           matches.push(...allSheetsMatches);
           break;
-          
+
         default:
           throw new AppError(`Invalid scope: ${scope}`, 400);
       }
@@ -73,36 +95,32 @@ class FindReplaceService {
       // Cache the results
       this.searchCache.set(cacheKey, {
         results: matches,
-        ts: Date.now()
+        ts: Date.now(),
       });
 
       logger.info(`Found ${matches.length} occurrences of '${searchTerm}'`, {
         driveId,
         itemId,
         scope,
-        matchCount: matches.length
+        matchCount: matches.length,
       });
 
       return matches;
-
     } catch (err) {
-      logger.error('Failed to find occurrences', {
+      logger.error("Failed to find occurrences", {
         driveId,
         itemId,
         searchTerm,
         scope,
-        error: err.message
+        error: err.message,
       });
       throw err;
     }
   }
 
-  /**
-   * Find occurrences in header row only (first row)
-   */
   async findInHeaders(graphClient, driveId, itemId, searchTerm) {
     const matches = [];
-    
+
     try {
       // Get all worksheets
       const worksheetsResp = await graphClient
@@ -112,26 +130,37 @@ class FindReplaceService {
       for (const worksheet of worksheetsResp.value || []) {
         // Get the used range to determine how many columns to check
         const usedRangeResp = await graphClient
-          .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange`)
+          .api(
+            `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange`
+          )
           .get();
 
         if (usedRangeResp && usedRangeResp.columnCount > 0) {
           // Read first row only
-          const headerRange = `A1:${this.getColumnLetter(usedRangeResp.columnCount)}1`;
+          const headerRange = `A1:${this.getColumnLetter(
+            usedRangeResp.columnCount
+          )}1`;
           const headerResp = await graphClient
-            .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/range(address='${headerRange}')`)
+            .api(
+              `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/range(address='${headerRange}')`
+            )
             .get();
 
           if (headerResp.values && headerResp.values[0]) {
             headerResp.values[0].forEach((cellValue, colIndex) => {
-              if (cellValue && String(cellValue).toLowerCase().includes(searchTerm.toLowerCase())) {
+              if (
+                cellValue &&
+                String(cellValue)
+                  .toLowerCase()
+                  .includes(searchTerm.toLowerCase())
+              ) {
                 matches.push({
                   sheet: worksheet.name,
                   sheetId: worksheet.id,
                   cell: `${this.getColumnLetter(colIndex + 1)}1`,
                   value: cellValue,
                   oldValue: cellValue,
-                  isHeader: true
+                  isHeader: true,
                 });
               }
             });
@@ -139,26 +168,26 @@ class FindReplaceService {
         }
       }
     } catch (err) {
-      logger.warn('Failed to search in headers', { error: err.message });
+      logger.warn("Failed to search in headers", { error: err.message });
     }
 
     return matches;
   }
 
-  /**
-   * Find occurrences in specific range
-   */
   async findInRange(graphClient, driveId, itemId, searchTerm, rangeSpec) {
     const matches = [];
-    
+
     try {
       // Parse range specification (e.g., "Sheet1!A2:D20" or "A2:D20")
-      const { sheetName, address } = resolverService.parseSheetAndAddress(rangeSpec);
-      
+      const { sheetName, address } =
+        resolverService.parseSheetAndAddress(rangeSpec);
+
       if (sheetName) {
         // Specific sheet and range
         const rangeResp = await graphClient
-          .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets('${sheetName}')/range(address='${address}')`)
+          .api(
+            `/drives/${driveId}/items/${itemId}/workbook/worksheets('${sheetName}')/range(address='${address}')`
+          )
           .get();
 
         this.extractMatchesFromRange(rangeResp, searchTerm, sheetName, matches);
@@ -171,32 +200,47 @@ class FindReplaceService {
         if (worksheetsResp.value && worksheetsResp.value.length > 0) {
           const firstSheet = worksheetsResp.value[0];
           const rangeResp = await graphClient
-            .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets/${firstSheet.id}/range(address='${address}')`)
+            .api(
+              `/drives/${driveId}/items/${itemId}/workbook/worksheets/${firstSheet.id}/range(address='${address}')`
+            )
             .get();
 
-          this.extractMatchesFromRange(rangeResp, searchTerm, firstSheet.name, matches);
+          this.extractMatchesFromRange(
+            rangeResp,
+            searchTerm,
+            firstSheet.name,
+            matches
+          );
         }
       }
     } catch (err) {
-      logger.warn('Failed to search in specific range', { rangeSpec, error: err.message });
+      logger.warn("Failed to search in specific range", {
+        rangeSpec,
+        error: err.message,
+      });
     }
 
     return matches;
   }
 
-  /**
-   * Find occurrences in entire sheet
-   */
-  async findInSheet(graphClient, driveId, itemId, searchTerm, sheetName = null) {
+  async findInSheet(
+    graphClient,
+    driveId,
+    itemId,
+    searchTerm,
+    sheetName = null
+  ) {
     const matches = [];
-    
+
     try {
       let worksheets = [];
-      
+
       if (sheetName) {
         // Search in specific sheet
         const worksheetResp = await graphClient
-          .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets('${sheetName}')`)
+          .api(
+            `/drives/${driveId}/items/${itemId}/workbook/worksheets('${sheetName}')`
+          )
           .get();
         worksheets = [worksheetResp];
       } else {
@@ -209,26 +253,33 @@ class FindReplaceService {
 
       for (const worksheet of worksheets) {
         const usedRangeResp = await graphClient
-          .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange`)
+          .api(
+            `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange`
+          )
           .get();
 
         if (usedRangeResp && usedRangeResp.values) {
-          this.extractMatchesFromRange(usedRangeResp, searchTerm, worksheet.name, matches);
+          this.extractMatchesFromRange(
+            usedRangeResp,
+            searchTerm,
+            worksheet.name,
+            matches
+          );
         }
       }
     } catch (err) {
-      logger.warn('Failed to search in sheet', { sheetName, error: err.message });
+      logger.warn("Failed to search in sheet", {
+        sheetName,
+        error: err.message,
+      });
     }
 
     return matches;
   }
 
-  /**
-   * Find occurrences in all sheets
-   */
   async findInAllSheets(graphClient, driveId, itemId, searchTerm) {
     const matches = [];
-    
+
     try {
       const worksheetsResp = await graphClient
         .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets`)
@@ -237,63 +288,77 @@ class FindReplaceService {
       for (const worksheet of worksheetsResp.value || []) {
         try {
           const usedRangeResp = await graphClient
-            .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange`)
+            .api(
+              `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange`
+            )
             .get();
 
           if (usedRangeResp && usedRangeResp.values) {
-            this.extractMatchesFromRange(usedRangeResp, searchTerm, worksheet.name, matches);
+            this.extractMatchesFromRange(
+              usedRangeResp,
+              searchTerm,
+              worksheet.name,
+              matches
+            );
           }
         } catch (sheetErr) {
-          logger.warn(`Failed to search in sheet ${worksheet.name}`, { error: sheetErr.message });
+          logger.warn(`Failed to search in sheet ${worksheet.name}`, {
+            error: sheetErr.message,
+          });
         }
       }
     } catch (err) {
-      logger.warn('Failed to search in all sheets', { error: err.message });
+      logger.warn("Failed to search in all sheets", { error: err.message });
     }
 
     return matches;
   }
 
-  /**
-   * Extract matches from a range response
-   */
   extractMatchesFromRange(rangeResp, searchTerm, sheetName, matches) {
     if (!rangeResp.values) return;
 
     const startRow = rangeResp.address.match(/:([A-Z]+)(\d+)/)?.[2] || 1;
-    const startCol = rangeResp.address.match(/([A-Z]+)(\d+)/)?.[1] || 'A';
+    const startCol = rangeResp.address.match(/([A-Z]+)(\d+)/)?.[1] || "A";
     const startColIndex = this.getColumnIndex(startCol);
     const startRowIndex = parseInt(startRow);
 
     rangeResp.values.forEach((row, rowIndex) => {
       row.forEach((cellValue, colIndex) => {
-        if (cellValue && String(cellValue).toLowerCase().includes(searchTerm.toLowerCase())) {
+        if (
+          cellValue &&
+          String(cellValue).toLowerCase().includes(searchTerm.toLowerCase())
+        ) {
           const actualRow = startRowIndex + rowIndex;
           const actualCol = this.getColumnLetter(startColIndex + colIndex);
-          
+
           matches.push({
             sheet: sheetName,
             cell: `${actualCol}${actualRow}`,
             value: cellValue,
             oldValue: cellValue,
-            isHeader: actualRow === 1
+            isHeader: actualRow === 1,
           });
         }
       });
     });
   }
 
-  /**
-   * Perform find and replace operation
-   */
-  async performReplace(accessToken, driveId, itemId, searchTerm, replaceTerm, matches, options = {}) {
+  async performReplace(
+    accessToken,
+    driveId,
+    itemId,
+    searchTerm,
+    replaceTerm,
+    matches,
+    options = {}
+  ) {
     const { highlightChanges = false, logChanges = true } = options;
     const changes = [];
     const errors = [];
 
     try {
       const graphClient = this.createGraphClient(accessToken);
-      
+
       // Group matches by sheet for batch operations
       const matchesBySheet = this.groupMatchesBySheet(matches);
 
@@ -309,13 +374,15 @@ class FindReplaceService {
             replaceTerm,
             highlightChanges
           );
-          
+
           changes.push(...sheetChanges);
         } catch (sheetErr) {
-          logger.error(`Failed to replace in sheet ${sheetName}`, { error: sheetErr.message });
+          logger.error(`Failed to replace in sheet ${sheetName}`, {
+            error: sheetErr.message,
+          });
           errors.push({
             sheet: sheetName,
-            error: sheetErr.message
+            error: sheetErr.message,
           });
         }
       }
@@ -323,7 +390,7 @@ class FindReplaceService {
       // Log the operation
       if (logChanges && changes.length > 0) {
         auditService.logSystemEvent({
-          event: 'FIND_REPLACE_OPERATION',
+          event: "FIND_REPLACE_OPERATION",
           details: {
             driveId,
             itemId,
@@ -331,8 +398,8 @@ class FindReplaceService {
             replaceTerm,
             changesCount: changes.length,
             highlightChanges,
-            changes: changes.slice(0, 100) // Limit logged changes to prevent huge logs
-          }
+            changes: changes.slice(0, 100), // Limit logged changes to prevent huge logs
+          },
         });
       }
 
@@ -342,69 +409,84 @@ class FindReplaceService {
         summary: {
           totalMatches: matches.length,
           successful: changes.length,
-          failed: errors.length
-        }
+          failed: errors.length,
+        },
       };
-
     } catch (err) {
-      logger.error('Failed to perform replace operation', {
+      logger.error("Failed to perform replace operation", {
         driveId,
         itemId,
         searchTerm,
         replaceTerm,
-        error: err.message
+        error: err.message,
       });
       throw err;
     }
   }
 
-  /**
-   * Replace text in a specific sheet
-   */
-  async replaceInSheet(graphClient, driveId, itemId, sheetName, matches, searchTerm, replaceTerm, highlightChanges) {
+  async replaceInSheet(
+    graphClient,
+    driveId,
+    itemId,
+    sheetName,
+    matches,
+    searchTerm,
+    replaceTerm,
+    highlightChanges
+  ) {
     const changes = [];
-    
+
     // Batch update values
-    const updates = matches.map(match => {
+    const updates = matches.map((match) => {
       const newValue = String(match.value).replace(
-        new RegExp(searchTerm, 'gi'),
+        new RegExp(searchTerm, "gi"),
         replaceTerm
       );
-      
+
       return {
         cell: match.cell,
         oldValue: match.value,
-        newValue: newValue
+        newValue: newValue,
       };
     });
 
     // Update cell values in batches
-    for (let i = 0; i < updates.length; i += 10) { // Process 10 cells at a time
+    for (let i = 0; i < updates.length; i += 10) {
+      // Process 10 cells at a time
       const batch = updates.slice(i, i + 10);
-      
+
       for (const update of batch) {
         try {
           // Update cell value
           await graphClient
-            .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets('${sheetName}')/range(address='${update.cell}')`)
+            .api(
+              `/drives/${driveId}/items/${itemId}/workbook/worksheets('${sheetName}')/range(address='${update.cell}')`
+            )
             .patch({
-              values: [[update.newValue]]
+              values: [[update.newValue]],
             });
 
           // Apply highlighting if requested
           if (highlightChanges) {
-            await this.highlightCell(graphClient, driveId, itemId, sheetName, update.cell);
+            await this.highlightCell(
+              graphClient,
+              driveId,
+              itemId,
+              sheetName,
+              update.cell
+            );
           }
 
           changes.push({
             sheet: sheetName,
             cell: update.cell,
             oldValue: update.oldValue,
-            newValue: update.newValue
+            newValue: update.newValue,
           });
-
         } catch (cellErr) {
-          logger.warn(`Failed to update cell ${update.cell}`, { error: cellErr.message });
+          logger.warn(`Failed to update cell ${update.cell}`, {
+            error: cellErr.message,
+          });
         }
       }
     }
@@ -412,28 +494,26 @@ class FindReplaceService {
     return changes;
   }
 
-  /**
-   * Highlight a cell with background color
-   */
   async highlightCell(graphClient, driveId, itemId, sheetName, cellAddress) {
     try {
       await graphClient
-        .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets('${sheetName}')/range(address='${cellAddress}')/format/fill`)
+        .api(
+          `/drives/${driveId}/items/${itemId}/workbook/worksheets('${sheetName}')/range(address='${cellAddress}')/format/fill`
+        )
         .patch({
-          color: '#FFFF00' // Yellow background
+          color: "#FFFF00", // Yellow background
         });
     } catch (err) {
-      logger.warn(`Failed to highlight cell ${cellAddress}`, { error: err.message });
+      logger.warn(`Failed to highlight cell ${cellAddress}`, {
+        error: err.message,
+      });
     }
   }
 
-  /**
-   * Group matches by sheet name
-   */
   groupMatchesBySheet(matches) {
     const grouped = new Map();
-    
-    matches.forEach(match => {
+
+    matches.forEach((match) => {
       if (!grouped.has(match.sheet)) {
         grouped.set(match.sheet, []);
       }
@@ -443,11 +523,8 @@ class FindReplaceService {
     return grouped;
   }
 
-  /**
-   * Convert column index to letter (1 = A, 2 = B, etc.)
-   */
   getColumnLetter(columnIndex) {
-    let result = '';
+    let result = "";
     while (columnIndex > 0) {
       columnIndex--;
       result = String.fromCharCode(65 + (columnIndex % 26)) + result;
@@ -456,9 +533,6 @@ class FindReplaceService {
     return result;
   }
 
-  /**
-   * Convert column letter to index (A = 1, B = 2, etc.)
-   */
   getColumnIndex(columnLetter) {
     let result = 0;
     for (let i = 0; i < columnLetter.length; i++) {
@@ -467,23 +541,20 @@ class FindReplaceService {
     return result;
   }
 
-  /**
-   * Generate preview of matches for user confirmation
-   */
   generatePreview(matches, searchTerm) {
     const preview = {
       searchTerm,
       totalMatches: matches.length,
       breakdown: {
-        headers: matches.filter(m => m.isHeader).length,
-        dataRows: matches.filter(m => !m.isHeader).length
+        headers: matches.filter((m) => m.isHeader).length,
+        dataRows: matches.filter((m) => !m.isHeader).length,
       },
       bySheet: {},
-      samples: matches.slice(0, 10) // Show first 10 matches as samples
+      samples: matches.slice(0, 10), // Show first 10 matches as samples
     };
 
     // Group by sheet for breakdown
-    matches.forEach(match => {
+    matches.forEach((match) => {
       if (!preview.bySheet[match.sheet]) {
         preview.bySheet[match.sheet] = 0;
       }
@@ -491,6 +562,107 @@ class FindReplaceService {
     });
 
     return preview;
+  }
+
+  async findOccurrencesByName(
+    accessToken,
+    {
+      driveName,
+      fileName,
+      searchTerm,
+      scope = "entire_sheet",
+      rangeSpec = null,
+      itemPath = null,
+    }
+  ) {
+    if (!driveName || !fileName || !searchTerm) {
+      throw new AppError(
+        "driveName, fileName, and searchTerm are required",
+        400
+      );
+    }
+
+    // Resolve IDs from names
+    const driveId = await resolverService.resolveDriveIdByName(
+      accessToken,
+      driveName
+    );
+
+    let itemId;
+    if (itemPath) {
+      itemId = await resolverService.resolveItemIdByPath(
+        accessToken,
+        driveId,
+        fileName,
+        itemPath
+      );
+    } else {
+      itemId = await resolverService.resolveItemIdByName(
+        accessToken,
+        driveId,
+        fileName
+      );
+    }
+
+    return this.findOccurrences(
+      accessToken,
+      driveId,
+      itemId,
+      searchTerm,
+      scope,
+      rangeSpec
+    );
+  }
+
+  async performReplaceByName(
+    accessToken,
+    {
+      driveName,
+      fileName,
+      searchTerm,
+      replaceTerm,
+      matches,
+      options = {},
+      itemPath = null,
+    }
+  ) {
+    if (!driveName || !fileName || !searchTerm || replaceTerm === undefined) {
+      throw new AppError(
+        "driveName, fileName, searchTerm, and replaceTerm are required",
+        400
+      );
+    }
+
+    const driveId = await resolverService.resolveDriveIdByName(
+      accessToken,
+      driveName
+    );
+
+    let itemId;
+    if (itemPath) {
+      itemId = await resolverService.resolveItemIdByPath(
+        accessToken,
+        driveId,
+        fileName,
+        itemPath
+      );
+    } else {
+      itemId = await resolverService.resolveItemIdByName(
+        accessToken,
+        driveId,
+        fileName
+      );
+    }
+
+    return this.performReplace(
+      accessToken,
+      driveId,
+      itemId,
+      searchTerm,
+      replaceTerm,
+      matches,
+      options
+    );
   }
 }
 

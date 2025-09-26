@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Excel GPT Middleware API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Express API middleware for Microsoft Graph Excel with name-based resolution, recursive search, Excel engine formatting, intelligent find/replace, and rename operations.\nNotes:\n- All Excel and rename endpoints are mounted under /api/excel. Health endpoints are under /health.\n- Name-vs-ID: All endpoints accept human-friendly names (driveName, folderName, fileName, sheetName) with automatic name-to-ID resolution and backward compatibility for IDs.\n- Path disambiguation: When duplicate file names exist, you can pass itemPath (e.g., '/Folder/Subfolder/My.xlsx').\n- Error envelope is consistent: { status: \"success\" | \"error\" | \"partial_success\" | \"preview\" | \"multiple_matches\" | \"no_matches\", ... }. Success responses include status: \"success\" and may include data."
   },
   "servers": [
@@ -21,7 +21,9 @@
             "description": "OK",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HealthSuccess" }
+                "schema": {
+                  "$ref": "#/components/schemas/HealthSuccess"
+                }
               }
             }
           }
@@ -33,16 +35,83 @@
         "summary": "List Excel workbooks in the resolved drive/folder (recursive where applicable)",
         "operationId": "listWorkbooks",
         "parameters": [
-          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
-          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override" },
-          { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
-          { "in": "query", "name": "sharepointSiteName", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., Finance)" },
-          { "in": "query", "name": "driveName", "schema": { "type": "string" }, "required": false, "description": "Optional drive name (auto-selected if single drive)." }
+          {
+            "in": "query",
+            "name": "siteId",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint Site ID override"
+          },
+          {
+            "in": "query",
+            "name": "siteUrl",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint Site URL override"
+          },
+          {
+            "in": "query",
+            "name": "sharepointHostname",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint hostname override (tenant.sharepoint.com)"
+          },
+          {
+            "in": "query",
+            "name": "sharepointSiteName",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint site name override (e.g., Finance)"
+          },
+          {
+            "in": "query",
+            "name": "driveName",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional drive name (auto-selected if single drive)."
+          }
         ],
         "responses": {
-          "200": { "description": "List success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ListItemsSuccess" } } } },
-          "400": { "description": "Ambiguous drive selection", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } } } },
-          "500": { "description": "Server or Graph error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "List success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListItemsSuccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ambiguous drive selection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorWithAvailableDrives"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server or Graph error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -51,18 +120,100 @@
         "summary": "List worksheets in a workbook",
         "operationId": "getWorksheets",
         "parameters": [
-          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
-          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override" },
-          { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
-          { "in": "query", "name": "sharepointSiteName", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., Finance)" },
-          { "in": "query", "name": "driveName", "schema": { "type": "string" } },
-          { "in": "query", "name": "itemName", "schema": { "type": "string" }, "description": "Workbook file name (e.g., Report.xlsx)." },
-          { "in": "query", "name": "itemPath", "schema": { "type": "string" }, "description": "Full path to disambiguate duplicates (e.g., /Folder/Sub/Report.xlsx)." }
+          {
+            "in": "query",
+            "name": "siteId",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint Site ID override"
+          },
+          {
+            "in": "query",
+            "name": "siteUrl",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint Site URL override"
+          },
+          {
+            "in": "query",
+            "name": "sharepointHostname",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint hostname override (tenant.sharepoint.com)"
+          },
+          {
+            "in": "query",
+            "name": "sharepointSiteName",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint site name override (e.g., Finance)"
+          },
+          {
+            "in": "query",
+            "name": "driveName",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Drive name (e.g., Documents)"
+          },
+          {
+            "in": "query",
+            "name": "itemName",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Workbook file name (e.g., Report.xlsx)."
+          },
+          {
+            "in": "query",
+            "name": "itemPath",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full path to disambiguate duplicates (e.g., /Folder/Sub/Report.xlsx)."
+          }
         ],
         "responses": {
-          "200": { "description": "List success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ListSheetsSuccess" } } } },
-          "404": { "description": "Drive or file not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "List success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSheetsSuccess"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Drive or file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -70,12 +221,64 @@
       "post": {
         "summary": "Read a range from a worksheet or usedRange",
         "operationId": "readExcelRange",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Read success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadSuccess" } } } },
-          "400": { "description": "Bad request / ambiguity", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Read success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadSuccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / ambiguity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorWithAvailableSheets"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorWithAvailableDrives"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -83,38 +286,64 @@
       "post": {
         "summary": "Write values to a range or append after usedRange",
         "operationId": "writeExcelRange",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WriteRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Write success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WriteSuccess" } } } },
-          "400": { "description": "Bad request / ambiguity", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
-        }
-      }
-    },
-    "/api/excel/read-table": {
-      "post": {
-        "summary": "Read a table by name or range",
-        "operationId": "readTable",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadTableRequest" } } } },
-        "responses": {
-          "200": { "description": "Read table success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadTableSuccess" } } } },
-          "400": { "description": "Bad request / ambiguity", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
-        }
-      }
-    },
-    "/api/excel/add-table-rows": {
-      "post": {
-        "summary": "Append rows to a table",
-        "operationId": "addTableRows",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddTableRowsRequest" } } } },
-        "responses": {
-          "200": { "description": "Append success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "400": { "description": "Bad request / ambiguity", "content": { "application/json": { "schema": { "oneOf": [ { "$ref": "#/components/schemas/ErrorWithAvailableSheets" }, { "$ref": "#/components/schemas/ErrorWithAvailableDrives" } ] } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Write success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteSuccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / ambiguity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorWithAvailableSheets"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorWithAvailableDrives"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -122,31 +351,47 @@
       "post": {
         "summary": "Batch Excel operations (reads/writes/formatting)",
         "operationId": "batchOperations",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BatchRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Batch success (partial successes possible)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BatchSuccess" } } } },
-          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
-        }
-      }
-    },
-    "/api/excel/metadata": {
-      "get": {
-        "summary": "Get workbook metadata",
-        "operationId": "getFileMetadata",
-        "parameters": [
-          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
-          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override" },
-          { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
-          { "in": "query", "name": "sharepointSiteName", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., Finance)" },
-          { "in": "query", "name": "driveName", "schema": { "type": "string" } },
-          { "in": "query", "name": "itemName", "schema": { "type": "string" } },
-          { "in": "query", "name": "itemPath", "schema": { "type": "string" } }
-        ],
-        "responses": {
-          "200": { "description": "Metadata success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Batch success (partial successes possible)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchSuccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -155,17 +400,89 @@
         "summary": "Recursive search for files by name",
         "operationId": "searchFiles",
         "parameters": [
-          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
-          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override" },
-          { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
-          { "in": "query", "name": "sharepointSiteName", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., Finance)" },
-          { "in": "query", "name": "driveName", "schema": { "type": "string" } },
-          { "in": "query", "name": "fileName", "schema": { "type": "string" }, "description": "Target file name (case-insensitive)." }
+          {
+            "in": "query",
+            "name": "siteId",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint Site ID override"
+          },
+          {
+            "in": "query",
+            "name": "siteUrl",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint Site URL override"
+          },
+          {
+            "in": "query",
+            "name": "sharepointHostname",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint hostname override (tenant.sharepoint.com)"
+          },
+          {
+            "in": "query",
+            "name": "sharepointSiteName",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint site name override (e.g., Finance)"
+          },
+          {
+            "in": "query",
+            "name": "driveName",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fileName",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Target file name (case-insensitive)."
+          }
         ],
         "responses": {
-          "200": { "description": "Search results (may include multiple paths)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchFilesSuccess" } } } },
-          "404": { "description": "No matches found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Search results (may include multiple paths)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchFilesSuccess"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No matches found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -173,13 +490,67 @@
       "post": {
         "summary": "Intelligent find & replace with optional preview and highlighting",
         "operationId": "findReplace",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FindReplaceRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindReplaceRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Operation success (may include change log)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FindReplaceSuccess" } } } },
-          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "404": { "description": "Targets not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "409": { "description": "Multiple matches requiring user disambiguation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MultipleMatchError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Operation success (may include change log)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindReplaceSuccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Targets not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Multiple matches requiring user disambiguation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultipleMatchError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -187,11 +558,47 @@
       "post": {
         "summary": "Search text without replacement",
         "operationId": "searchText",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchTextRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchTextRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Search results", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchTextSuccess" } } } },
-          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTextSuccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -200,18 +607,95 @@
         "summary": "Analyze workbook structure for find/replace planning",
         "operationId": "analyzeScope",
         "parameters": [
-          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
-          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override" },
-          { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
-          { "in": "query", "name": "sharepointSiteName", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., Finance)" },
-          { "in": "query", "name": "driveName", "schema": { "type": "string" } },
-          { "in": "query", "name": "itemName", "schema": { "type": "string" } },
-          { "in": "query", "name": "itemPath", "schema": { "type": "string" } }
+          {
+            "in": "query",
+            "name": "siteId",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint Site ID override"
+          },
+          {
+            "in": "query",
+            "name": "siteUrl",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint Site URL override"
+          },
+          {
+            "in": "query",
+            "name": "sharepointHostname",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint hostname override (tenant.sharepoint.com)"
+          },
+          {
+            "in": "query",
+            "name": "sharepointSiteName",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional SharePoint site name override (e.g., Finance)"
+          },
+          {
+            "in": "query",
+            "name": "driveName",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "itemName",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "itemPath",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Scope metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Scope metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSuccessWithData"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -219,84 +703,47 @@
       "post": {
         "summary": "Apply formatting, formulas, and advanced Excel engine operations",
         "operationId": "excelFormat",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExcelFormatRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExcelFormatRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Formatting applied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
-        }
-      }
-    },
-    "/api/excel/validate-formula": {
-      "post": {
-        "summary": "Validate Excel formula syntax",
-        "operationId": "validateFormula",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidateFormulaRequest" } } } },
-        "responses": {
-          "200": { "description": "Validation result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidateFormulaSuccess" } } } },
-          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
-        }
-      }
-    },
-    "/api/excel/cell-info": {
-      "get": {
-        "summary": "Get comprehensive cell information",
-        "operationId": "cellInfo",
-        "parameters": [
-          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
-          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override" },
-          { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
-          { "in": "query", "name": "sharepointSiteName", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., Finance)" },
-          { "in": "query", "name": "driveName", "schema": { "type": "string" } },
-          { "in": "query", "name": "itemName", "schema": { "type": "string" } },
-          { "in": "query", "name": "itemPath", "schema": { "type": "string" } },
-          { "in": "query", "name": "sheetName", "schema": { "type": "string" } },
-          { "in": "query", "name": "cellAddress", "schema": { "type": "string" }, "required": true, "description": "A1-style address (e.g., 'B7')." }
-        ],
-        "responses": {
-          "200": { "description": "Cell info result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
-        }
-      }
-    },
-    "/api/excel/functions": {
-      "get": {
-        "summary": "List available Excel functions grouped by category",
-        "operationId": "excelFunctions",
-        "responses": {
-          "200": { "description": "Function catalog", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } }
-        }
-      }
-    },
-    "/api/excel/worksheet-info": {
-      "get": {
-        "summary": "Worksheet structure and metadata",
-        "operationId": "worksheetInfo",
-        "parameters": [
-          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
-          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override" },
-          { "in": "query", "name": "sharepointHostname", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
-          { "in": "query", "name": "sharepointSiteName", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., Finance)" },
-          { "in": "query", "name": "driveName", "schema": { "type": "string" } },
-          { "in": "query", "name": "itemName", "schema": { "type": "string" } },
-          { "in": "query", "name": "itemPath", "schema": { "type": "string" } },
-          { "in": "query", "name": "sheetName", "schema": { "type": "string" } }
-        ],
-        "responses": {
-          "200": { "description": "Worksheet info", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
-        }
-      }
-    },
-    "/api/excel/logs": {
-      "get": {
-        "summary": "Retrieve audit logs (admin/debug)",
-        "operationId": "getAuditLogs",
-        "responses": {
-          "200": { "description": "Logs list", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } }
+          "200": {
+            "description": "Formatting applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSuccessWithData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -304,11 +751,47 @@
       "post": {
         "summary": "Rename an Excel file",
         "operationId": "renameFile",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RenameFileRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameFileRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Rename success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RenameSuccess" } } } },
-          "404": { "description": "File not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "409": { "description": "Multiple matches or conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MultipleMatchError" } } } }
+          "200": {
+            "description": "Rename success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameSuccess"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Multiple matches or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultipleMatchError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -316,11 +799,47 @@
       "post": {
         "summary": "Rename a folder",
         "operationId": "renameFolder",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RenameFolderRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameFolderRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Rename success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RenameSuccess" } } } },
-          "404": { "description": "Folder not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "409": { "description": "Multiple matches or conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MultipleMatchError" } } } }
+          "200": {
+            "description": "Rename success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameSuccess"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Folder not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Multiple matches or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultipleMatchError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -328,10 +847,37 @@
       "post": {
         "summary": "Rename a worksheet within a workbook",
         "operationId": "renameSheet",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RenameSheetRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameSheetRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Rename success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RenameSuccess" } } } },
-          "404": { "description": "Sheet not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Rename success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameSuccess"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sheet not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -339,9 +885,27 @@
       "post": {
         "summary": "Get intelligent rename suggestions for related items",
         "operationId": "renameSuggestions",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RenameSuggestionsRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameSuggestionsRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Suggestions returned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } }
+          "200": {
+            "description": "Suggestions returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSuccessWithData"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -349,26 +913,85 @@
       "post": {
         "summary": "Perform multiple rename operations in batch",
         "operationId": "batchRename",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BatchRenameRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRenameRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Batch rename results", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BatchRenameSuccess" } } } },
-          "207": { "description": "Multi-status for partial successes", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BatchRenameSuccess" } } } }
+          "200": {
+            "description": "Batch rename results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchRenameSuccess"
+                }
+              }
+            }
+          },
+          "207": {
+            "description": "Multi-status for partial successes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchRenameSuccess"
+                }
+              }
+            }
+          }
         }
       }
-    }
-    ,
+    },
     "/api/excel/create-file": {
       "post": {
         "summary": "Create a new Excel file in a drive/folder",
         "operationId": "createFile",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateFileRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFileRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "File created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "409": { "description": "Conflict - file exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "File created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSuccessWithData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict - file exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -378,12 +1001,45 @@
         "operationId": "createSheet",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateSheetRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSheetRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Sheet created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "400": { "description": "Bad request or duplicate name", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "404": { "description": "Drive or file not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Sheet created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSuccessWithData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request or duplicate name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Drive or file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -392,14 +1048,64 @@
         "summary": "Delete a workbook by name (use itemPath to disambiguate)",
         "operationId": "deleteFile",
         "parameters": [
-          { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false },
-          { "in": "query", "name": "siteUrl", "schema": { "type": "string" }, "required": false }
+          {
+            "in": "query",
+            "name": "siteId",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "siteUrl",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
         ],
-        "requestBody": { "required": false, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteFileRequest" } } } },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteFileRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "File deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "409": { "description": "Multiple matches", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MultipleMatchError" } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "File deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSuccessWithData"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Multiple matches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultipleMatchError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -407,405 +1113,931 @@
       "delete": {
         "summary": "Delete a worksheet from a workbook (not the last)",
         "operationId": "deleteSheet",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteSheetRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteSheetRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Sheet deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeSuccessWithData" } } } },
-          "400": { "description": "Cannot delete last sheet or bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EnvelopeError" } } } }
+          "200": {
+            "description": "Sheet deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSuccessWithData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cannot delete last sheet or bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
+              }
+            }
+          }
         }
       }
     }
   },
   "components": {
     "parameters": {
-      "siteId": { "name": "siteId", "in": "query", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site ID override" },
-      "siteUrl": { "name": "siteUrl", "in": "query", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint Site URL override" },
-      "sharepointHostname": { "name": "sharepointHostname", "in": "query", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint hostname override (tenant.sharepoint.com)" },
-      "sharepointSiteName": { "name": "sharepointSiteName", "in": "query", "schema": { "type": "string" }, "required": false, "description": "Optional SharePoint site name override (e.g., Finance)" }
+      "siteId": {
+        "name": "siteId",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "required": false,
+        "description": "Optional SharePoint Site ID override"
+      },
+      "siteUrl": {
+        "name": "siteUrl",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "required": false,
+        "description": "Optional SharePoint Site URL override"
+      },
+      "sharepointHostname": {
+        "name": "sharepointHostname",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "required": false,
+        "description": "Optional SharePoint hostname override (tenant.sharepoint.com)"
+      },
+      "sharepointSiteName": {
+        "name": "sharepointSiteName",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "required": false,
+        "description": "Optional SharePoint site name override (e.g., Finance)"
+      }
     },
     "schemas": {
       "EnvelopeSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "EnvelopeSuccessWithData": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
           "data": {}
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "EnvelopeError": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["error"], "example": "error" },
-          "error": { "oneOf": [ { "type": "string" }, { "type": "object", "additionalProperties": true } ] }
+          "status": {
+            "type": "string",
+            "enum": [
+              "error"
+            ],
+            "example": "error"
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ]
+          }
         },
-        "required": ["status", "error"]
+        "required": [
+          "status",
+          "error"
+        ]
       },
       "MultipleMatchError": {
         "allOf": [
-          { "$ref": "#/components/schemas/EnvelopeError" },
+          {
+            "$ref": "#/components/schemas/EnvelopeError"
+          },
           {
             "type": "object",
             "properties": {
-              "options": { "type": "array", "items": { "type": "string" }, "description": "Candidate full paths for disambiguation" }
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Candidate full paths for disambiguation"
+              }
             }
           }
         ]
       },
       "ErrorWithAvailableSheets": {
         "allOf": [
-          { "$ref": "#/components/schemas/EnvelopeError" },
-          { "type": "object", "properties": { "availableSheets": { "type": "array", "items": { "type": "string" } } } }
+          {
+            "$ref": "#/components/schemas/EnvelopeError"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "availableSheets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         ]
       },
       "ErrorWithAvailableDrives": {
         "allOf": [
-          { "$ref": "#/components/schemas/EnvelopeError" },
-          { "type": "object", "properties": { "availableDrives": { "type": "array", "items": { "type": "string" } } } }
+          {
+            "$ref": "#/components/schemas/EnvelopeError"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "availableDrives": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         ]
       },
       "HealthSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
           "data": {
             "type": "object",
             "properties": {
-              "status": { "type": "string", "example": "ok" },
-              "time": { "type": "string", "format": "date-time" }
+              "status": {
+                "type": "string",
+                "example": "ok"
+              },
+              "time": {
+                "type": "string",
+                "format": "date-time"
+              }
             },
-            "required": ["status", "time"]
+            "required": [
+              "status",
+              "time"
+            ]
           }
         },
-        "required": ["status", "data"]
+        "required": [
+          "status",
+          "data"
+        ]
       },
       "HealthDetailedSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success", "error"], "example": "success" },
-          "data": { "type": "object", "additionalProperties": true }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "error"
+            ],
+            "example": "success"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          }
         },
-        "required": ["status", "data"]
+        "required": [
+          "status",
+          "data"
+        ]
       },
       "ListItemsSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
-          "items": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
         },
-        "required": ["status", "items"]
+        "required": [
+          "status",
+          "data"
+        ]
       },
       "ListSheetsSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
-          "sheets": { "type": "array", "items": { "type": "string" } }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "integer"
+                },
+                "visibility": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            }
+          }
         },
-        "required": ["status", "sheets"]
+        "required": [
+          "status",
+          "data"
+        ]
       },
       "SearchFilesSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
           "matches": {
             "type": "array",
             "items": {
               "type": "object",
-              "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "path": { "type": "string" } },
-              "required": ["name", "path"]
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "path"
+              ]
             }
           }
         },
-        "required": ["status", "matches"]
+        "required": [
+          "status",
+          "matches"
+        ]
       },
       "RangeObject": {
         "type": "object",
         "additionalProperties": true,
         "properties": {
-          "address": { "type": "string" },
-          "values": { "type": "array", "items": { "type": "array", "items": {} } }
+          "address": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {}
+            }
+          }
         }
       },
       "MessageValues": {
         "type": "object",
         "properties": {
-          "message": { "type": "string" },
-          "values": { "type": "array", "items": { "type": "array", "items": {} } }
+          "message": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {}
+            }
+          }
         },
-        "required": ["message", "values"]
+        "required": [
+          "message",
+          "values"
+        ]
       },
       "ReadRequest": {
         "type": "object",
-        "description": "Provide fileName (or itemName); driveName optional if single drive. Sheet can be provided via sheetName or range prefix (Sheet!A1:B2).",
+        "description": "Names-first: provide driveName and itemName. sheetName optional; you can also prefix the range with Sheet!A1:B2.",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "sheetName": { "type": "string" },
-          "range": { "type": "string" }
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "sheetName": {
+            "type": "string"
+          },
+          "range": {
+            "type": "string"
+          }
         },
-        "required": ["itemName"]
+        "required": [
+          "driveName",
+          "itemName",
+          "range"
+        ]
       },
       "ReadSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success", "no_matches", "preview"], "example": "success" },
-          "data": { "oneOf": [ { "$ref": "#/components/schemas/RangeObject" }, { "$ref": "#/components/schemas/MessageValues" }, { "type": "object", "additionalProperties": true } ] }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "no_matches",
+              "preview"
+            ],
+            "example": "success"
+          },
+          "data": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RangeObject"
+              },
+              {
+                "$ref": "#/components/schemas/MessageValues"
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ]
+          }
         },
-        "required": ["status", "data"]
+        "required": [
+          "status",
+          "data"
+        ]
       },
       "WriteRequest": {
         "type": "object",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "sheetName": { "type": "string" },
-          "range": { "type": "string" },
-          "values": { "type": "array", "items": { "type": "array", "items": {} }, "description": "2D array of values" }
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "sheetName": {
+            "type": "string"
+          },
+          "range": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {}
+            },
+            "description": "2D array of values"
+          }
         },
-        "required": ["itemName", "values"]
+        "required": [
+          "driveName",
+          "itemName",
+          "range",
+          "values"
+        ]
       },
       "WriteSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
           "data": {
             "oneOf": [
-              { "type": "object", "additionalProperties": true },
-              { "type": "object", "properties": { "message": { "type": "string" }, "writtenTo": { "type": "string" } }, "required": ["message", "writtenTo"] }
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  },
+                  "writtenTo": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message",
+                  "writtenTo"
+                ]
+              }
             ]
           }
         },
-        "required": ["status"]
-      },
-      "ReadTableRequest": {
-        "type": "object",
-        "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "sheetName": { "type": "string" },
-          "tableName": { "type": "string" },
-          "range": { "type": "string" }
-        },
-        "required": ["itemName"]
-      },
-      "ReadTableSuccess": {
-        "type": "object",
-        "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
-          "data": { "type": "object", "additionalProperties": true }
-        },
-        "required": ["status"]
-      },
-      "AddTableRowsRequest": {
-        "type": "object",
-        "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "sheetName": { "type": "string" },
-          "tableName": { "type": "string" },
-          "rows": { "type": "array", "items": { "type": "array", "items": {} } }
-        },
-        "required": ["itemName", "tableName", "rows"]
+        "required": [
+          "status"
+        ]
       },
       "BatchRequest": {
         "type": "object",
         "properties": {
-          "operations": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
         },
-        "required": ["operations"]
+        "required": [
+          "operations"
+        ]
       },
       "BatchSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success", "partial_success"], "example": "success" },
-          "results": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "partial_success"
+            ],
+            "example": "success"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "ExcelFormatRequest": {
         "type": "object",
         "description": "Supports formatting (font, fill, borders), formulas, validation, pivot tables, conditional formatting, named ranges, sorting/filtering.",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "sheetName": { "type": "string" },
-          "operations": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "Engine operations grouped by type for batching." },
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "sheetName": {
+            "type": "string"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "description": "Engine operations grouped by type for batching."
+          },
           "formula": {
             "type": "object",
             "properties": {
-              "expression": { "type": "string" },
-              "targetCell": { "type": "string" },
-              "overwrite": { "type": "boolean" }
+              "expression": {
+                "type": "string"
+              },
+              "targetCell": {
+                "type": "string"
+              },
+              "overwrite": {
+                "type": "boolean"
+              }
             }
           }
         },
-        "required": ["itemName"]
-      },
-      "ValidateFormulaRequest": {
-        "type": "object",
-        "properties": {
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "sheetName": { "type": "string" },
-          "formula": {
-            "type": "object",
-            "properties": {
-              "expression": { "type": "string" },
-              "targetCell": { "type": "string" },
-              "overwrite": { "type": "boolean" }
-            },
-            "required": ["expression"]
-          }
-        },
-        "required": ["itemName", "formula"]
-      },
-      "ValidateFormulaSuccess": {
-        "type": "object",
-        "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
-          "valid": { "type": "boolean" },
-          "message": { "type": "string" }
-        },
-        "required": ["status", "valid"]
+        "required": [
+          "driveName",
+          "itemName"
+        ]
       },
       "FindReplaceRequest": {
         "type": "object",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "scope": { "type": "string", "enum": ["header_only", "specific_range", "entire_sheet", "all_sheets"], "default": "entire_sheet" },
-          "sheetName": { "type": "string" },
-          "rangeSpec": { "type": "string" },
-          "searchTerm": { "type": "string" },
-          "replaceTerm": { "type": "string" },
-          "confirm": { "type": "boolean", "default": false },
-          "highlightChanges": { "type": "boolean", "default": false },
-          "logChanges": { "type": "boolean", "default": true },
-          "previewId": { "type": "string" }
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "header_only",
+              "specific_range",
+              "entire_sheet",
+              "all_sheets"
+            ],
+            "default": "entire_sheet"
+          },
+          "sheetName": {
+            "type": "string"
+          },
+          "rangeSpec": {
+            "type": "string"
+          },
+          "searchTerm": {
+            "type": "string"
+          },
+          "replaceTerm": {
+            "type": "string"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false
+          },
+          "highlightChanges": {
+            "type": "boolean",
+            "default": false
+          },
+          "logChanges": {
+            "type": "boolean",
+            "default": true
+          },
+          "previewId": {
+            "type": "string"
+          }
         },
-        "required": ["itemName", "searchTerm"]
+        "required": [
+          "driveName",
+          "itemName",
+          "searchTerm"
+        ]
       },
       "FindReplaceSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success", "preview", "no_matches", "partial_success"], "example": "success" },
-          "changes": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
-          "summary": { "type": "object", "additionalProperties": true }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "preview",
+              "no_matches",
+              "partial_success"
+            ],
+            "example": "success"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": true
+          }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "SearchTextRequest": {
         "type": "object",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "scope": { "type": "string", "enum": ["header_only", "specific_range", "entire_sheet", "all_sheets"], "default": "entire_sheet" },
-          "sheetName": { "type": "string" },
-          "rangeSpec": { "type": "string" },
-          "searchTerm": { "type": "string" }
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "header_only",
+              "specific_range",
+              "entire_sheet",
+              "all_sheets"
+            ],
+            "default": "entire_sheet"
+          },
+          "sheetName": {
+            "type": "string"
+          },
+          "rangeSpec": {
+            "type": "string"
+          },
+          "searchTerm": {
+            "type": "string"
+          }
         },
-        "required": ["itemName", "searchTerm"]
+        "required": [
+          "itemName",
+          "searchTerm"
+        ]
       },
       "SearchTextSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success", "no_matches"], "example": "success" },
-          "results": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "no_matches"
+            ],
+            "example": "success"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "RenameFileRequest": {
         "type": "object",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "folderPath": { "type": "string", "description": "Optional folder path containing the file." },
-          "fileName": { "type": "string", "description": "Current file name (or use itemName)." },
-          "itemName": { "type": "string", "description": "Current file name (alias)." },
-          "newName": { "type": "string", "description": "New file name." }
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "folderPath": {
+            "type": "string",
+            "description": "Optional folder path containing the file."
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Current file name (or use itemName)."
+          },
+          "itemName": {
+            "type": "string",
+            "description": "Current file name (alias)."
+          },
+          "newName": {
+            "type": "string",
+            "description": "New file name."
+          }
         },
-        "required": ["newName"]
+        "required": [
+          "newName"
+        ]
       },
       "RenameFolderRequest": {
         "type": "object",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "folderPath": { "type": "string", "description": "Full path to target folder." },
-          "newName": { "type": "string" }
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "folderPath": {
+            "type": "string",
+            "description": "Full path to target folder."
+          },
+          "newName": {
+            "type": "string"
+          }
         },
-        "required": ["folderPath", "newName"]
+        "required": [
+          "folderPath",
+          "newName"
+        ]
       },
       "RenameSheetRequest": {
         "type": "object",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "sheetName": { "type": "string", "description": "Current sheet name." },
-          "newName": { "type": "string" }
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "sheetName": {
+            "type": "string",
+            "description": "Current sheet name."
+          },
+          "newName": {
+            "type": "string"
+          }
         },
-        "required": ["itemName", "sheetName", "newName"]
+        "required": [
+          "itemName",
+          "sheetName",
+          "newName"
+        ]
       },
       "RenameSuggestionsRequest": {
         "type": "object",
         "properties": {
-          "searchTerm": { "type": "string" },
-          "context": { "type": "string" }
+          "searchTerm": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          }
         },
-        "required": ["searchTerm"]
+        "required": [
+          "searchTerm"
+        ]
       },
       "BatchRenameRequest": {
         "type": "object",
@@ -815,72 +2047,171 @@
             "items": {
               "type": "object",
               "properties": {
-                "type": { "type": "string", "enum": ["file", "folder", "sheet"] },
-                "target": { "type": "object", "additionalProperties": true },
-                "newName": { "type": "string" }
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "file",
+                    "folder",
+                    "sheet"
+                  ]
+                },
+                "target": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "newName": {
+                  "type": "string"
+                }
               },
-              "required": ["type", "target", "newName"]
+              "required": [
+                "type",
+                "target",
+                "newName"
+              ]
             }
           }
         },
-        "required": ["operations"]
+        "required": [
+          "operations"
+        ]
       },
       "RenameSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
-          "message": { "type": "string" }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
+          "message": {
+            "type": "string"
+          }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "BatchRenameSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success", "partial_success"], "example": "success" },
-          "results": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "partial_success"
+            ],
+            "example": "success"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
         },
-        "required": ["status", "results"]
+        "required": [
+          "status",
+          "results"
+        ]
       },
       "CreateFileRequest": {
         "type": "object",
         "properties": {
-          "driveName": { "type": "string" },
-          "parentPath": { "type": "string", "description": "Like /Projects/2024; default root" },
-          "fileName": { "type": "string", "pattern": ".*\\.xlsx$" },
-          "template": { "type": "string", "enum": ["blank"], "default": "blank" }
+          "driveName": {
+            "type": "string"
+          },
+          "parentPath": {
+            "type": "string",
+            "description": "Like /Projects/2024; default root"
+          },
+          "fileName": {
+            "type": "string",
+            "pattern": ".*\\.xlsx$"
+          },
+          "template": {
+            "type": "string",
+            "enum": [
+              "blank"
+            ],
+            "default": "blank"
+          }
         },
-        "required": ["driveName", "fileName"]
+        "required": [
+          "driveName",
+          "fileName"
+        ]
       },
       "CreateSheetRequest": {
         "type": "object",
         "properties": {
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "sheetName": { "type": "string" },
-          "position": { "type": "integer", "minimum": 0 }
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "sheetName": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
-        "required": ["driveName", "itemName", "sheetName"]
+        "required": [
+          "driveName",
+          "itemName",
+          "sheetName"
+        ]
       },
       "DeleteFileRequest": {
         "type": "object",
         "properties": {
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "force": { "type": "boolean" }
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "force": {
+            "type": "boolean"
+          }
         },
-        "required": ["driveName", "itemName"]
+        "required": [
+          "driveName",
+          "itemName"
+        ]
       },
       "DeleteSheetRequest": {
         "type": "object",
         "properties": {
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "sheetName": { "type": "string" }
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "sheetName": {
+            "type": "string"
+          }
         },
-        "required": ["driveName", "itemName", "sheetName"]
+        "required": [
+          "driveName",
+          "itemName",
+          "sheetName"
+        ]
       }
     }
   }

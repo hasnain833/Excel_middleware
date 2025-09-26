@@ -3,8 +3,15 @@ const router = express.Router();
 const excelController = require("../controllers/excelController");
 const findReplaceController = require("../controllers/findReplaceController");
 const excelEngineController = require("../controllers/excelEngineController");
-const { ensureAuthenticated, logAuthenticatedRequest, } = require("../auth/middleware");
-const { validateRequest, validateRangeValuesCompatibility, sanitizeRequest, } = require("../middleware/validation");
+const {
+  ensureAuthenticated,
+  logAuthenticatedRequest,
+} = require("../auth/middleware");
+const {
+  validateRequest,
+  validateRangeValuesCompatibility,
+  sanitizeRequest,
+} = require("../middleware/validation");
 const { writeLimiter, generalLimiter } = require("../middleware/rateLimiter");
 const rangeValidator = require("../middleware/rangeValidator");
 const auditLogger = require("../middleware/auditLogger");
@@ -15,7 +22,7 @@ router.use(ensureAuthenticated);
 router.use(logAuthenticatedRequest);
 router.use(generalLimiter);
 
-// All Routes 
+// All Routes
 router.get("/workbooks", excelController.getWorkbooks);
 
 router.get(
@@ -41,27 +48,10 @@ router.post(
 );
 
 router.post(
-  "/read-table",
-  validateRequest("readTable", "body"),
-  excelController.readTable
-);
-
-router.post(
-  "/add-table-rows",
-  writeLimiter, // Apply stricter rate limiting for write operations
-  auditLogger.middleware(), // Log all write operations
-  rangeValidator.middleware(), // Validate range permissions
-  validateRequest("addTableRows", "body"),
-  excelController.addTableRows
-);
-
-router.post(
   "/batch",
   writeLimiter, // Apply stricter rate limiting since this can include writes
   excelController.batchOperations
 );
-
-router.get("/metadata", excelController.getFileMetadata);
 
 router.get(
   "/search",
@@ -97,58 +87,37 @@ router.post(
   excelEngineController.applyFormatting
 );
 
-  router.post(
-    "/validate-formula",
-    validateRequest("validateFormula", "body"),
-    excelEngineController.validateFormula
-  );
+// File and worksheet management
+router.post(
+  "/create-file",
+  writeLimiter,
+  auditLogger.middleware(),
+  validateRequest("createFile", "body"),
+  excelController.createFile
+);
 
-  router.get(
-    "/cell-info",
-    validateRequest("cellInfo", "query"),
-    excelEngineController.getCellInfo
-  );
+router.post(
+  "/create-sheet",
+  writeLimiter,
+  auditLogger.middleware(),
+  validateRequest("createSheet", "body"),
+  excelController.createSheet
+);
 
-  router.get("/functions", excelEngineController.getExcelFunctions);
+router.delete(
+  "/delete-file",
+  writeLimiter,
+  auditLogger.middleware(),
+  validateRequest("deleteFile", "queryOrBody"),
+  excelController.deleteFile
+);
 
-  router.get(
-    "/worksheet-info",
-    validateRequest("worksheetInfo", "query"),
-    excelEngineController.getWorksheetInfo
-  );
-  router.get("/logs", require("../controllers/auditController").getAuditLogs);
+router.delete(
+  "/delete-sheet",
+  writeLimiter,
+  auditLogger.middleware(),
+  validateRequest("deleteSheet", "body"),
+  excelController.deleteSheet
+);
 
-  // File and worksheet management
-  router.post(
-    "/create-file",
-    writeLimiter,
-    auditLogger.middleware(),
-    validateRequest("createFile", "body"),
-    excelController.createFile
-  );
-
-  router.post(
-    "/create-sheet",
-    writeLimiter,
-    auditLogger.middleware(),
-    validateRequest("createSheet", "body"),
-    excelController.createSheet
-  );
-
-  router.delete(
-    "/delete-file",
-    writeLimiter,
-    auditLogger.middleware(),
-    validateRequest("deleteFile", "queryOrBody"),
-    excelController.deleteFile
-  );
-
-  router.delete(
-    "/delete-sheet",
-    writeLimiter,
-    auditLogger.middleware(),
-    validateRequest("deleteSheet", "body"),
-    excelController.deleteSheet
-  );
-
-  module.exports = router;
+module.exports = router;
