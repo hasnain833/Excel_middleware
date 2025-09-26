@@ -18,8 +18,6 @@ class ExcelEngineController {
    */
   applyFormatting = catchAsync(async (req, res) => {
     const { 
-      driveId, 
-      itemId, 
       driveName, 
       itemName, 
       itemPath,
@@ -35,41 +33,25 @@ class ExcelEngineController {
       throw new AppError('Either operations array or formula object is required', 400);
     }
 
-    // Resolve drive and item IDs if names provided
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
-
-    if (!resolvedItemId && itemName) {
-      try {
-        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-      } catch (err) {
-        if (err.isMultipleMatches) {
-          if (itemPath) {
-            resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-          } else {
-            return res.status(409).json({
-              status: 'multiple_matches',
-              message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
-              matches: err.matches.map(match => ({
-                id: match.id,
-                name: match.name,
-                path: match.path,
-                parentId: match.parentId
-              }))
-            });
-          }
+    // Resolve drive and item IDs from names only
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    let resolvedItemId;
+    try {
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    } catch (err) {
+      if (err.isMultipleMatches) {
+        if (itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
         } else {
-          throw err;
+          return res.status(409).json({
+            status: 'multiple_matches',
+            message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
+            matches: err.matches.map(match => ({ id: match.id, name: match.name, path: match.path, parentId: match.parentId }))
+          });
         }
+      } else {
+        throw err;
       }
-    }
-
-    if (!resolvedDriveId || !resolvedItemId) {
-      throw new AppError('Could not resolve drive or item. Please provide valid identifiers.', 400);
     }
 
     try {
@@ -128,12 +110,7 @@ class ExcelEngineController {
       });
 
     } catch (err) {
-      logger.error('Excel engine operation failed', {
-        driveId: resolvedDriveId,
-        itemId: resolvedItemId,
-        sheetName,
-        error: err.message
-      });
+      logger.error('Excel engine operation failed', { driveId: resolvedDriveId, itemId: resolvedItemId, sheetName, error: err.message });
       throw err;
     }
   });
@@ -143,42 +120,23 @@ class ExcelEngineController {
    * POST /api/excel/validate-formula
    */
   validateFormula = catchAsync(async (req, res) => {
-    const { 
-      driveId, 
-      itemId, 
-      driveName, 
-      itemName, 
-      itemPath,
-      sheetName,
-      formula
-    } = req.body;
+    const { driveName, itemName, itemPath, sheetName, formula } = req.body;
     
     if (!formula) {
       throw new AppError('formula is required', 400);
     }
 
-    // Resolve drive and item IDs
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
-
-    if (!resolvedItemId && itemName) {
-      try {
-        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-      } catch (err) {
-        if (err.isMultipleMatches && itemPath) {
-          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-        } else {
-          throw err;
-        }
+    // Resolve drive and item IDs from names only
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    let resolvedItemId;
+    try {
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    } catch (err) {
+      if (err.isMultipleMatches && itemPath) {
+        resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+      } else {
+        throw err;
       }
-    }
-
-    if (!resolvedDriveId || !resolvedItemId) {
-      throw new AppError('Could not resolve drive or item. Please provide valid identifiers.', 400);
     }
 
     try {
@@ -206,12 +164,7 @@ class ExcelEngineController {
       });
 
     } catch (err) {
-      logger.error('Formula validation failed', {
-        driveId: resolvedDriveId,
-        itemId: resolvedItemId,
-        formula,
-        error: err.message
-      });
+      logger.error('Formula validation failed', { driveId: resolvedDriveId, itemId: resolvedItemId, formula, error: err.message });
       throw err;
     }
   });
@@ -221,42 +174,23 @@ class ExcelEngineController {
    * GET /api/excel/cell-info
    */
   getCellInfo = catchAsync(async (req, res) => {
-    const { 
-      driveId, 
-      itemId, 
-      driveName, 
-      itemName, 
-      itemPath,
-      sheetName,
-      cellAddress
-    } = req.query;
+    const { driveName, itemName, itemPath, sheetName, cellAddress } = req.query;
     
     if (!cellAddress) {
       throw new AppError('cellAddress is required', 400);
     }
 
-    // Resolve drive and item IDs
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
-
-    if (!resolvedItemId && itemName) {
-      try {
-        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-      } catch (err) {
-        if (err.isMultipleMatches && itemPath) {
-          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-        } else {
-          throw err;
-        }
+    // Resolve drive and item IDs via names only
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    let resolvedItemId;
+    try {
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    } catch (err) {
+      if (err.isMultipleMatches && itemPath) {
+        resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+      } else {
+        throw err;
       }
-    }
-
-    if (!resolvedDriveId || !resolvedItemId) {
-      throw new AppError('Could not resolve drive or item. Please provide valid identifiers.', 400);
     }
 
     try {
@@ -283,12 +217,7 @@ class ExcelEngineController {
       });
 
     } catch (err) {
-      logger.error('Failed to get cell info', {
-        driveId: resolvedDriveId,
-        itemId: resolvedItemId,
-        cellAddress,
-        error: err.message
-      });
+      logger.error('Failed to get cell info', { driveId: resolvedDriveId, itemId: resolvedItemId, cellAddress, error: err.message });
       throw err;
     }
   });
@@ -369,37 +298,19 @@ class ExcelEngineController {
    * GET /api/excel/worksheet-info
    */
   getWorksheetInfo = catchAsync(async (req, res) => {
-    const { 
-      driveId, 
-      itemId, 
-      driveName, 
-      itemName, 
-      itemPath,
-      sheetName
-    } = req.query;
+    const { driveName, itemName, itemPath, sheetName } = req.query;
 
-    // Resolve drive and item IDs
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
-
-    if (!resolvedItemId && itemName) {
-      try {
-        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-      } catch (err) {
-        if (err.isMultipleMatches && itemPath) {
-          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-        } else {
-          throw err;
-        }
+    // Resolve drive and item IDs via names only
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    let resolvedItemId;
+    try {
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    } catch (err) {
+      if (err.isMultipleMatches && itemPath) {
+        resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+      } else {
+        throw err;
       }
-    }
-
-    if (!resolvedDriveId || !resolvedItemId) {
-      throw new AppError('Could not resolve drive or item. Please provide valid identifiers.', 400);
     }
 
     try {
@@ -484,12 +395,7 @@ class ExcelEngineController {
       }
 
     } catch (err) {
-      logger.error('Failed to get worksheet info', {
-        driveId: resolvedDriveId,
-        itemId: resolvedItemId,
-        sheetName,
-        error: err.message
-      });
+      logger.error('Failed to get worksheet info', { driveId: resolvedDriveId, itemId: resolvedItemId, sheetName, error: err.message });
       throw err;
     }
   });

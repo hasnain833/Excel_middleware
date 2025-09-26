@@ -389,7 +389,7 @@
     },
     "/api/excel/delete-file": {
       "delete": {
-        "summary": "Delete a workbook by ID or name/path",
+        "summary": "Delete a workbook by name (use itemPath to disambiguate)",
         "operationId": "deleteFile",
         "parameters": [
           { "in": "query", "name": "siteId", "schema": { "type": "string" }, "required": false },
@@ -660,17 +660,36 @@
           "itemName": { "type": "string" },
           "itemPath": { "type": "string" },
           "sheetName": { "type": "string" },
-          "range": { "type": "string" },
-          "operations": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "Engine operations grouped by type for batching." }
+          "operations": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "Engine operations grouped by type for batching." },
+          "formula": {
+            "type": "object",
+            "properties": {
+              "expression": { "type": "string" },
+              "targetCell": { "type": "string" },
+              "overwrite": { "type": "boolean" }
+            }
+          }
         },
-        "required": ["itemName", "operations"]
+        "required": ["itemName"]
       },
       "ValidateFormulaRequest": {
         "type": "object",
         "properties": {
-          "formula": { "type": "string" }
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" },
+          "itemPath": { "type": "string" },
+          "sheetName": { "type": "string" },
+          "formula": {
+            "type": "object",
+            "properties": {
+              "expression": { "type": "string" },
+              "targetCell": { "type": "string" },
+              "overwrite": { "type": "boolean" }
+            },
+            "required": ["expression"]
+          }
         },
-        "required": ["formula"]
+        "required": ["itemName", "formula"]
       },
       "ValidateFormulaSuccess": {
         "type": "object",
@@ -693,15 +712,15 @@
           "itemPath": { "type": "string" },
           "scope": { "type": "string", "enum": ["header_only", "specific_range", "entire_sheet", "all_sheets"], "default": "entire_sheet" },
           "sheetName": { "type": "string" },
-          "range": { "type": "string" },
-          "searchText": { "type": "string" },
-          "replaceText": { "type": "string" },
-          "preview": { "type": "boolean", "default": false },
+          "rangeSpec": { "type": "string" },
+          "searchTerm": { "type": "string" },
+          "replaceTerm": { "type": "string" },
+          "confirm": { "type": "boolean", "default": false },
           "highlightChanges": { "type": "boolean", "default": false },
           "logChanges": { "type": "boolean", "default": true },
-          "caseInsensitive": { "type": "boolean", "default": true }
+          "previewId": { "type": "string" }
         },
-        "required": ["itemName", "searchText"]
+        "required": ["itemName", "searchTerm"]
       },
       "FindReplaceSuccess": {
         "type": "object",
@@ -724,11 +743,10 @@
           "itemPath": { "type": "string" },
           "scope": { "type": "string", "enum": ["header_only", "specific_range", "entire_sheet", "all_sheets"], "default": "entire_sheet" },
           "sheetName": { "type": "string" },
-          "range": { "type": "string" },
-          "searchText": { "type": "string" },
-          "caseInsensitive": { "type": "boolean", "default": true }
+          "rangeSpec": { "type": "string" },
+          "searchTerm": { "type": "string" }
         },
-        "required": ["itemName", "searchText"]
+        "required": ["itemName", "searchTerm"]
       },
       "SearchTextSuccess": {
         "type": "object",
@@ -826,49 +844,43 @@
       "CreateFileRequest": {
         "type": "object",
         "properties": {
-          "driveId": { "type": "string" },
           "driveName": { "type": "string" },
           "parentPath": { "type": "string", "description": "Like /Projects/2024; default root" },
           "fileName": { "type": "string", "pattern": ".*\\.xlsx$" },
           "template": { "type": "string", "enum": ["blank"], "default": "blank" }
         },
-        "required": ["fileName"]
+        "required": ["driveName", "fileName"]
       },
       "CreateSheetRequest": {
         "type": "object",
         "properties": {
-          "driveId": { "type": "string" },
           "driveName": { "type": "string" },
-          "itemId": { "type": "string" },
           "itemName": { "type": "string" },
           "itemPath": { "type": "string" },
           "sheetName": { "type": "string" },
           "position": { "type": "integer", "minimum": 0 }
         },
-        "required": ["sheetName"]
+        "required": ["driveName", "itemName", "sheetName"]
       },
       "DeleteFileRequest": {
         "type": "object",
         "properties": {
-          "driveId": { "type": "string" },
           "driveName": { "type": "string" },
-          "itemId": { "type": "string" },
           "itemName": { "type": "string" },
           "itemPath": { "type": "string" },
           "force": { "type": "boolean" }
-        }
+        },
+        "required": ["driveName", "itemName"]
       },
       "DeleteSheetRequest": {
         "type": "object",
         "properties": {
-          "driveId": { "type": "string" },
           "driveName": { "type": "string" },
-          "itemId": { "type": "string" },
           "itemName": { "type": "string" },
           "itemPath": { "type": "string" },
           "sheetName": { "type": "string" }
         },
-        "required": ["sheetName"]
+        "required": ["driveName", "itemName", "sheetName"]
       }
     }
   }

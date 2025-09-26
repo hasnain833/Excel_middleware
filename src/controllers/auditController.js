@@ -1,16 +1,7 @@
-/**
- * Audit Controller
- * Handles audit log retrieval endpoints
- */
-
 const auditLogger = require('../middleware/auditLogger');
-const catchAsync = require('../utils/catchAsync');
-const logger = require('../config/logger');
+const { catchAsync } = require('../middleware/errorHandler');
 
 class AuditController {
-    /**
-     * Get audit log entries with filtering
-     */
     getAuditLogs = catchAsync(async (req, res) => {
         const {
             user,

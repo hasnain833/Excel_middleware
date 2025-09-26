@@ -35,9 +35,17 @@ class Server {
   constructor() {
     this.app = express();
     this.port = process.env.PORT || 3000;
-    this.setupMiddleware();
-    this.setupRoutes();
-    this.setupErrorHandling();
+    try {
+      this.setupMiddleware();
+      logger.info('Server middleware setup complete');
+      this.setupRoutes();
+      logger.info('Server routes setup complete');
+      this.setupErrorHandling();
+      logger.info('Server error handling setup complete');
+    } catch (err) {
+      logger.error('Server initialization failed in constructor', { error: err.message, stack: err.stack });
+      throw err;
+    }
   }
 
   /**
@@ -158,31 +166,31 @@ class Server {
             method: "GET",
             path: "/api/excel/worksheets",
             description: "Get worksheets in a workbook",
-            parameters: ["driveId", "itemId"],
+            parameters: ["driveName", "itemName", "itemPath (optional)"],
           },
           readRange: {
             method: "POST",
             path: "/api/excel/read",
             description: "Read data from Excel range",
-            body: ["driveId", "itemId", "worksheetId", "range"],
+            body: ["driveName", "itemName", "itemPath (optional)", "worksheetName (optional)", "range"],
           },
           writeRange: {
             method: "POST",
             path: "/api/excel/write",
             description: "Write data to Excel range",
-            body: ["driveId", "itemId", "worksheetId", "range", "values"],
+            body: ["driveName", "itemName", "itemPath (optional)", "worksheetName (optional)", "range", "values"],
           },
           readTable: {
             method: "POST",
             path: "/api/excel/read-table",
             description: "Read data from Excel table",
-            body: ["driveId", "itemId", "worksheetId", "tableName"],
+            body: ["driveName", "itemName", "itemPath (optional)", "worksheetName (optional)", "tableName"],
           },
           addTableRows: {
             method: "POST",
             path: "/api/excel/add-table-rows",
             description: "Add rows to Excel table",
-            body: ["driveId", "itemId", "worksheetId", "tableName", "rows"],
+            body: ["driveName", "itemName", "itemPath (optional)", "worksheetName (optional)", "tableName", "rows"],
           },
           batch: {
             method: "POST",
@@ -194,19 +202,19 @@ class Server {
             method: "POST",
             path: "/api/excel/rename-file",
             description: "Rename an Excel file",
-            body: ["driveId", "itemId", "newName"],
+            body: ["driveName", "itemName", "newName", "itemPath (optional)"],
           },
           renameFolder: {
             method: "POST",
             path: "/api/excel/rename-folder",
             description: "Rename a folder",
-            body: ["driveId", "folderId", "newName"],
+            body: ["driveName", "folderPath", "newName"],
           },
           renameSheet: {
             method: "POST",
             path: "/api/excel/rename-sheet",
             description: "Rename an Excel worksheet",
-            body: ["driveId", "itemId", "oldSheetName", "newSheetName"],
+            body: ["driveName", "itemName", "oldSheetName", "newSheetName", "itemPath (optional)"],
           },
           renameSuggestions: {
             method: "POST",
@@ -225,39 +233,39 @@ class Server {
             path: "/api/excel/find-replace",
             description:
               "Find and replace text in Excel files with intelligent scoping",
-            body: ["driveId", "itemId", "searchTerm", "replaceTerm", "scope"],
+            body: ["driveName", "itemName", "itemPath (optional)", "searchTerm", "replaceTerm (optional)", "scope", "rangeSpec (optional)", "confirm (optional)", "highlightChanges (optional)", "logChanges (optional)", "previewId (optional)"],
           },
           searchText: {
             method: "POST",
             path: "/api/excel/search-text",
             description: "Search for text in Excel files without replacement",
-            body: ["driveId", "itemId", "searchTerm", "scope"],
+            body: ["driveName", "itemName", "itemPath (optional)", "searchTerm", "scope", "rangeSpec (optional)"],
           },
           analyzeScope: {
             method: "GET",
             path: "/api/excel/analyze-scope",
             description: "Analyze Excel file structure for scope planning",
-            parameters: ["driveId", "itemId"],
+            parameters: ["driveName", "itemName", "itemPath (optional)"],
           },
           format: {
             method: "POST",
             path: "/api/excel/format",
             description:
               "Apply comprehensive Excel formatting, formulas, and advanced features",
-            body: ["driveId", "itemId", "sheetName", "operations"],
+            body: ["driveName", "itemName", "itemPath (optional)", "sheetName (optional)", "operations (optional)", "formula (optional)"],
           },
           validateFormula: {
             method: "POST",
             path: "/api/excel/validate-formula",
             description: "Validate Excel formula syntax before insertion",
-            body: ["driveId", "itemId", "sheetName", "formula"],
+            body: ["driveName", "itemName", "itemPath (optional)", "sheetName (optional)", "formula"],
           },
           cellInfo: {
             method: "GET",
             path: "/api/excel/cell-info",
             description:
               "Get comprehensive cell information (value, formula, formatting)",
-            parameters: ["driveId", "itemId", "sheetName", "cellAddress"],
+            parameters: ["driveName", "itemName", "itemPath (optional)", "sheetName (optional)", "cellAddress"],
           },
           functions: {
             method: "GET",
@@ -270,14 +278,14 @@ class Server {
             method: "GET",
             path: "/api/excel/worksheet-info",
             description: "Get worksheet structure and metadata",
-            parameters: ["driveId", "itemId", "sheetName (optional)"],
+            parameters: ["driveName", "itemName", "itemPath (optional)", "sheetName (optional)"],
           },
           createFile: {
             method: "POST",
             path: "/api/excel/create-file",
             description: "Create a new Excel file in a drive/folder",
             body: [
-              "driveId|driveName",
+              "driveName",
               "parentPath (optional)",
               "fileName (.xlsx)",
             ],
@@ -287,8 +295,8 @@ class Server {
             path: "/api/excel/create-sheet",
             description: "Add a worksheet to an existing workbook",
             body: [
-              "driveId|driveName",
-              "itemId|itemName(+itemPath optional)",
+              "driveName",
+              "itemName (itemPath optional)",
               "sheetName",
               "position (optional)",
             ],
@@ -296,10 +304,10 @@ class Server {
           deleteFile: {
             method: "DELETE",
             path: "/api/excel/delete-file",
-            description: "Delete a workbook by ID or name/path",
+            description: "Delete a workbook by name (use itemPath to disambiguate)",
             body: [
-              "driveId|driveName (optional)",
-              "itemId OR itemName(+itemPath optional)",
+              "driveName",
+              "itemName (itemPath optional)",
               "force (optional)",
             ],
           },
@@ -309,8 +317,8 @@ class Server {
             description:
               "Delete a worksheet from an existing workbook (not the last sheet)",
             body: [
-              "driveId|driveName",
-              "itemId|itemName(+itemPath optional)",
+              "driveName",
+              "itemName (itemPath optional)",
               "sheetName",
             ],
           },

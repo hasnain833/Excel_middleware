@@ -130,6 +130,82 @@ const requestSchemas = {
     itemName: schemas.itemName.required(),
     itemPath: schemas.itemPath.optional(),
     sheetName: schemas.worksheetName.required()
+  }),
+
+  // Analyze scope (GET query) - names only
+  analyzeScope: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional()
+  }),
+
+  // Cell info (GET query) - names only
+  cellInfo: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional(),
+    sheetName: schemas.worksheetName.optional(),
+    cellAddress: Joi.string().min(1).required()
+  }),
+
+  // Worksheet info (GET query) - names only
+  worksheetInfo: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional(),
+    sheetName: schemas.worksheetName.optional()
+  }),
+
+  // Find & Replace (POST body) - names only
+  findReplace: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional(),
+    searchTerm: Joi.string().min(1).required(),
+    replaceTerm: Joi.string().allow('').optional(),
+    scope: Joi.string().valid('header_only','specific_range','entire_sheet','all_sheets').default('entire_sheet'),
+    rangeSpec: Joi.string().optional(),
+    highlightChanges: Joi.boolean().optional(),
+    logChanges: Joi.boolean().optional(),
+    confirm: Joi.boolean().optional(),
+    previewId: Joi.string().optional()
+  }),
+
+  // Search text (POST body) - names only
+  searchText: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional(),
+    searchTerm: Joi.string().min(1).required(),
+    scope: Joi.string().valid('header_only','specific_range','entire_sheet','all_sheets').default('entire_sheet'),
+    rangeSpec: Joi.string().optional()
+  }),
+
+  // Excel format (POST body) - names only
+  excelFormat: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional(),
+    sheetName: schemas.worksheetName.optional(),
+    operations: Joi.array().items(Joi.object()).optional(),
+    formula: Joi.object({
+      expression: Joi.string().min(1).required(),
+      targetCell: Joi.string().min(1).required(),
+      overwrite: Joi.boolean().optional()
+    }).optional()
+  }),
+
+  // Validate formula (POST body) - names only
+  validateFormula: Joi.object({
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
+    itemPath: schemas.itemPath.optional(),
+    sheetName: schemas.worksheetName.optional(),
+    formula: Joi.object({
+      expression: Joi.string().min(1).required(),
+      targetCell: Joi.string().min(1).optional(),
+      overwrite: Joi.boolean().optional()
+    }).required()
   })
 };
 
