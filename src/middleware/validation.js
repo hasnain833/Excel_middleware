@@ -280,7 +280,7 @@ const sanitizeInput = (input) => {
   return input.replace(/[<>"';]/g, "");
 };
 
-const sanitizeRequest = (req, next) => {
+const sanitizeRequest = (req, res, next) => {
   const sanitizeObject = (obj) => {
     if (typeof obj === "string") {
       return sanitizeInput(obj);
@@ -295,11 +295,9 @@ const sanitizeRequest = (req, next) => {
     }
     return obj;
   };
-
   req.body = sanitizeObject(req.body);
   req.query = sanitizeObject(req.query);
   req.params = sanitizeObject(req.params);
-
   next();
 };
 
