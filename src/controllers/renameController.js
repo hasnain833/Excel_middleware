@@ -18,8 +18,6 @@ class RenameController {
    */
   renameFile = catchAsync(async (req, res) => {
     const { 
-      driveId, 
-      itemId, 
       driveName, 
       itemName, 
       itemPath,
@@ -33,42 +31,26 @@ class RenameController {
       throw new AppError('newName is required', 400);
     }
 
-    // Resolve drive and item IDs if names provided
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
-
-    if (!resolvedItemId && itemName) {
-      try {
-        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-      } catch (err) {
-        if (err.isMultipleMatches) {
-          if (itemPath) {
-            resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-          } else {
-            // Return multiple matches for user selection
-            return res.status(409).json({
-              status: 'multiple_matches',
-              message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
-              matches: err.matches.map(match => ({
-                id: match.id,
-                name: match.name,
-                path: match.path,
-                parentId: match.parentId
-              }))
-            });
-          }
+    // Resolve drive and item IDs from names only
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    let resolvedItemId;
+    try {
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    } catch (err) {
+      if (err.isMultipleMatches) {
+        if (itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
         } else {
-          throw err;
+          // Return multiple matches for user selection
+          return res.status(409).json({
+            status: 'multiple_matches',
+            message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
+            matches: err.matches.map(match => ({ id: match.id, name: match.name, path: match.path, parentId: match.parentId }))
+          });
         }
+      } else {
+        throw err;
       }
-    }
-
-    if (!resolvedDriveId || !resolvedItemId) {
-      throw new AppError('Could not resolve drive or item. Please provide valid identifiers.', 400);
     }
 
     const result = await renameService.renameFile(
@@ -95,8 +77,6 @@ class RenameController {
    */
   renameFolder = catchAsync(async (req, res) => {
     const { 
-      driveId, 
-      folderId, 
       driveName, 
       folderName, 
       folderPath,
@@ -110,28 +90,30 @@ class RenameController {
       throw new AppError('newName is required', 400);
     }
 
-    // Resolve drive ID if name provided
-    let resolvedDriveId = driveId;
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    // Resolve drive ID from name
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+
+    // Resolve folder ID via name, optionally disambiguated by folderPath
+    let effectiveFolderName = folderName;
+    if (!effectiveFolderName && folderPath) {
+      const parts = folderPath.split('/').filter(Boolean);
+      effectiveFolderName = parts[parts.length - 1];
     }
 
-    // For folders, we need to implement folder resolution similar to file resolution
-    let resolvedFolderId = folderId;
-    if (!resolvedFolderId && folderName) {
-      // Search for folder by name (similar to file search but for folders)
+    let resolvedFolderId;
+    if (effectiveFolderName) {
       const graphClient = resolverService.createGraphClient(req.accessToken);
-      const matches = await this.findFoldersByName(graphClient, resolvedDriveId, folderName);
+      const matches = await this.findFoldersByName(graphClient, resolvedDriveId, effectiveFolderName);
       
       if (matches.length === 0) {
-        throw new AppError(`Folder '${folderName}' not found`, 404);
+        throw new AppError(`Folder '${effectiveFolderName}' not found`, 404);
       }
       
       if (matches.length > 1) {
         if (folderPath) {
           const match = matches.find(m => m.path === folderPath);
           if (!match) {
-            throw new AppError(`Folder '${folderName}' not found at path '${folderPath}'`, 404);
+            throw new AppError(`Folder '${effectiveFolderName}' not found at path '${folderPath}'`, 404);
           }
           resolvedFolderId = match.id;
         } else {
@@ -152,7 +134,7 @@ class RenameController {
     }
 
     if (!resolvedDriveId || !resolvedFolderId) {
-      throw new AppError('Could not resolve drive or folder. Please provide valid identifiers.', 400);
+      throw new AppError('Could not resolve drive or folder. Please provide valid names.', 400);
     }
 
     const result = await renameService.renameFolder(
@@ -179,8 +161,6 @@ class RenameController {
    */
   renameSheet = catchAsync(async (req, res) => {
     const { 
-      driveId, 
-      itemId, 
       driveName, 
       itemName, 
       itemPath,
@@ -194,41 +174,25 @@ class RenameController {
       throw new AppError('oldSheetName and newSheetName are required', 400);
     }
 
-    // Resolve drive and item IDs
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
-
-    if (!resolvedItemId && itemName) {
-      try {
-        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-      } catch (err) {
-        if (err.isMultipleMatches) {
-          if (itemPath) {
-            resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-          } else {
-            return res.status(409).json({
-              status: 'multiple_matches',
-              message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
-              matches: err.matches.map(match => ({
-                id: match.id,
-                name: match.name,
-                path: match.path,
-                parentId: match.parentId
-              }))
-            });
-          }
+    // Resolve drive and item IDs from names only
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    let resolvedItemId;
+    try {
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    } catch (err) {
+      if (err.isMultipleMatches) {
+        if (itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
         } else {
-          throw err;
+          return res.status(409).json({
+            status: 'multiple_matches',
+            message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
+            matches: err.matches.map(match => ({ id: match.id, name: match.name, path: match.path, parentId: match.parentId }))
+          });
         }
+      } else {
+        throw err;
       }
-    }
-
-    if (!resolvedDriveId || !resolvedItemId) {
-      throw new AppError('Could not resolve drive or item. Please provide valid identifiers.', 400);
     }
 
     const result = await renameService.renameSheet(
@@ -255,7 +219,6 @@ class RenameController {
    */
   getRenameSuggestions = catchAsync(async (req, res) => {
     const { 
-      driveId, 
       driveName, 
       oldTerm, 
       newTerm 
@@ -267,13 +230,10 @@ class RenameController {
       throw new AppError('oldTerm and newTerm are required', 400);
     }
 
-    let resolvedDriveId = driveId;
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
 
     if (!resolvedDriveId) {
-      throw new AppError('Could not resolve drive. Please provide valid drive identifier.', 400);
+      throw new AppError('Could not resolve drive. Please provide valid drive name.', 400);
     }
 
     const suggestions = await renameService.findRelatedItems(
@@ -313,7 +273,6 @@ class RenameController {
    */
   batchRename = catchAsync(async (req, res) => {
     const { 
-      driveId, 
       driveName, 
       operations 
     } = req.body;

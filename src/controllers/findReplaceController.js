@@ -18,8 +18,6 @@ class FindReplaceController {
    */
   findReplace = catchAsync(async (req, res) => {
     const { 
-      driveId, 
-      itemId, 
       driveName, 
       itemName, 
       itemPath,
@@ -44,41 +42,25 @@ class FindReplaceController {
       throw new AppError('replaceTerm is required for replacement operation', 400);
     }
 
-    // Resolve drive and item IDs if names provided
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
-
-    if (!resolvedItemId && itemName) {
-      try {
-        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-      } catch (err) {
-        if (err.isMultipleMatches) {
-          if (itemPath) {
-            resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-          } else {
-            return res.status(409).json({
-              status: 'multiple_matches',
-              message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
-              matches: err.matches.map(match => ({
-                id: match.id,
-                name: match.name,
-                path: match.path,
-                parentId: match.parentId
-              }))
-            });
-          }
+    // Resolve drive and item IDs via names only
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    let resolvedItemId;
+    try {
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    } catch (err) {
+      if (err.isMultipleMatches) {
+        if (itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
         } else {
-          throw err;
+          return res.status(409).json({
+            status: 'multiple_matches',
+            message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
+            matches: err.matches.map(match => ({ id: match.id, name: match.name, path: match.path, parentId: match.parentId }))
+          });
         }
+      } else {
+        throw err;
       }
-    }
-
-    if (!resolvedDriveId || !resolvedItemId) {
-      throw new AppError('Could not resolve drive or item. Please provide valid identifiers.', 400);
     }
 
     // Validate scope and range
@@ -188,14 +170,7 @@ class FindReplaceController {
       });
 
     } catch (err) {
-      logger.error('Find and replace operation failed', {
-        driveId: resolvedDriveId,
-        itemId: resolvedItemId,
-        searchTerm,
-        replaceTerm,
-        scope,
-        error: err.message
-      });
+      logger.error('Find and replace operation failed', { driveId: resolvedDriveId, itemId: resolvedItemId, searchTerm, replaceTerm, scope, error: err.message });
       throw err;
     }
   });
@@ -206,8 +181,6 @@ class FindReplaceController {
    */
   searchText = catchAsync(async (req, res) => {
     const { 
-      driveId, 
-      itemId, 
       driveName, 
       itemName, 
       itemPath,
@@ -222,41 +195,25 @@ class FindReplaceController {
       throw new AppError('searchTerm is required', 400);
     }
 
-    // Resolve drive and item IDs
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
-
-    if (!resolvedItemId && itemName) {
-      try {
-        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-      } catch (err) {
-        if (err.isMultipleMatches) {
-          if (itemPath) {
-            resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-          } else {
-            return res.status(409).json({
-              status: 'multiple_matches',
-              message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
-              matches: err.matches.map(match => ({
-                id: match.id,
-                name: match.name,
-                path: match.path,
-                parentId: match.parentId
-              }))
-            });
-          }
+    // Resolve drive and item IDs via names only
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    let resolvedItemId;
+    try {
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    } catch (err) {
+      if (err.isMultipleMatches) {
+        if (itemPath) {
+          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
         } else {
-          throw err;
+          return res.status(409).json({
+            status: 'multiple_matches',
+            message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
+            matches: err.matches.map(match => ({ id: match.id, name: match.name, path: match.path, parentId: match.parentId }))
+          });
         }
+      } else {
+        throw err;
       }
-    }
-
-    if (!resolvedDriveId || !resolvedItemId) {
-      throw new AppError('Could not resolve drive or item. Please provide valid identifiers.', 400);
     }
 
     const matches = await findReplaceService.findOccurrences(
@@ -304,38 +261,21 @@ class FindReplaceController {
    * GET /api/excel/analyze-scope
    */
   analyzeScope = catchAsync(async (req, res) => {
-    const { 
-      driveId, 
-      itemId, 
-      driveName, 
-      itemName, 
-      itemPath
-    } = req.query;
+    const { driveName, itemName, itemPath } = req.query;
     
     const auditContext = auditService.createAuditContext(req);
 
-    // Resolve drive and item IDs
-    let resolvedDriveId = driveId;
-    let resolvedItemId = itemId;
-
-    if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    }
-
-    if (!resolvedItemId && itemName) {
-      try {
-        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-      } catch (err) {
-        if (err.isMultipleMatches && itemPath) {
-          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-        } else {
-          throw err;
-        }
+    // Resolve drive and item IDs via names only
+    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+    let resolvedItemId;
+    try {
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    } catch (err) {
+      if (err.isMultipleMatches && itemPath) {
+        resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+      } else {
+        throw err;
       }
-    }
-
-    if (!resolvedDriveId || !resolvedItemId) {
-      throw new AppError('Could not resolve drive or item. Please provide valid identifiers.', 400);
     }
 
     try {
