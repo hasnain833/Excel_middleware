@@ -1,20 +1,18 @@
 const winston = require("winston");
 const DailyRotateFile = require("winston-daily-rotate-file");
 const path = require("path");
+
 const logDir = process.env.LOG_DIR || "./logs";
+
 const logFormat = winston.format.combine(
-  winston.format.timestamp({
-    format: "YYYY-MM-DD HH:mm:ss",
-  }),
+  winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
   winston.format.errors({ stack: true }),
   winston.format.json()
 );
 
 const consoleFormat = winston.format.combine(
   winston.format.colorize(),
-  winston.format.timestamp({
-    format: "YYYY-MM-DD HH:mm:ss",
-  }),
+  winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
     let msg = `${timestamp} [${level}]: ${message}`;
     if (Object.keys(meta).length > 0) {
@@ -24,11 +22,19 @@ const consoleFormat = winston.format.combine(
   })
 );
 
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || "info",
-  format: logFormat,
-  defaultMeta: { service: "excel-gpt-middleware" },
-  transports: [
+const transports = [];
+
+// 🚀 On Vercel → console logging only (no file writes)
+if (process.env.VERCEL) {
+  transports.push(
+    new winston.transports.Console({
+      level: process.env.LOG_LEVEL || "info",
+      format: consoleFormat,
+    })
+  );
+} else {
+  // 💻 Local/dev → write logs to files + console
+  transports.push(
     new DailyRotateFile({
       filename: path.join(logDir, "error-%DATE%.log"),
       datePattern: "YYYY-MM-DD",
@@ -44,7 +50,6 @@ const logger = winston.createLogger({
       maxSize: "20m",
       maxFiles: "14d",
     }),
-
     new DailyRotateFile({
       filename: path.join(logDir, "audit-%DATE%.log"),
       datePattern: "YYYY-MM-DD",
@@ -56,21 +61,25 @@ const logger = winston.createLogger({
         winston.format.json()
       ),
     }),
-  ],
-});
+    new winston.transports.Console({ format: consoleFormat })
+  );
 
-if (process.env.NODE_ENV !== "production") {
-  logger.add(
-    new winston.transports.Console({
-      format: consoleFormat,
+  // Handle exceptions in local/dev (writes to file)
+  transports.push(
+    new winston.transports.File({
+      filename: path.join(logDir, "exceptions.log"),
     })
   );
 }
 
-logger.exceptions.handle(
-  new winston.transports.File({ filename: path.join(logDir, "exceptions.log") })
-);
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || "info",
+  format: logFormat,
+  defaultMeta: { service: "excel-gpt-middleware" },
+  transports,
+});
 
+// Handle unhandled promise rejections
 process.on("unhandledRejection", (ex) => {
   logger.error("Unhandled promise rejection", { error: ex });
   throw ex;
