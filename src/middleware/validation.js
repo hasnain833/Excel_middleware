@@ -84,15 +84,11 @@ const requestSchemas = {
   }),
 
   deleteFile: Joi.object({
-    driveId: schemas.driveId.optional(),
-    driveName: schemas.driveName.optional(),
-    itemId: schemas.itemId.optional(),
-    itemName: schemas.itemName.optional(),
+    driveName: schemas.driveName.required(),
+    itemName: schemas.itemName.required(),
     itemPath: schemas.itemPath.optional(),
     force: schemas.force,
-  })
-    .or("driveId", "driveName")
-    .or("itemId", "itemName"),
+  }),
 
   deleteSheet: Joi.object({
     driveName: schemas.driveName.required(),
@@ -116,9 +112,7 @@ const requestSchemas = {
     // New optional workflow fields (backward compatible)
     mode: Joi.string().valid("preview", "apply").optional(),
     strategy: Joi.string().valid("text", "entityName").default("text"),
-    sheetScope: Joi.string()
-      .optional()
-      .description("ALL or a specific sheet name"),
+    sheetScope: Joi.string().optional().description("ALL or a specific sheet name"),
     selection: Joi.array().items(Joi.string()).optional(),
     selectAll: Joi.boolean().optional(),
     scope: Joi.string()
