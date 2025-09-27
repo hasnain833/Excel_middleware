@@ -767,7 +767,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RenameSuccess"
+                  "$ref": "#/components/schemas/RenameFileSuccess"
                 }
               }
             }
@@ -787,7 +787,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MultipleMatchError"
+                  "$ref": "#/components/schemas/MultipleMatchesResponse"
                 }
               }
             }
@@ -1379,6 +1379,13 @@
             "type": "array",
             "items": {
               "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "driveId": { "type": "string" },
+                "driveName": { "type": "string" },
+                "fullPath": { "type": "string", "example": "/Reports/2024/3.1- Materiality.xlsx" }
+              },
               "additionalProperties": true
             }
           }
@@ -1933,19 +1940,24 @@
             "type": "string"
           },
           "driveName": {
-            "type": "string"
-          },
-          "folderPath": {
             "type": "string",
-            "description": "Optional folder path containing the file."
-          },
-          "fileName": {
-            "type": "string",
-            "description": "Current file name (or use itemName)."
+            "description": "Optional. If omitted, search all accessible drives."
           },
           "itemName": {
             "type": "string",
-            "description": "Current file name (alias)."
+            "description": "Current file name. Required if selectedItemId is not provided."
+          },
+          "itemPath": {
+            "type": "string",
+            "description": "Optional disambiguation path like /Folder/Sub/file.xlsx (within the drive)."
+          },
+          "selectedItemId": {
+            "type": "string",
+            "description": "Optional. Use this on the second call after a 409 multiple_matches to select the exact item."
+          },
+          "oldName": {
+            "type": "string",
+            "description": "Optional. Previous name for logging/backward compatibility."
           },
           "newName": {
             "type": "string",
@@ -1954,6 +1966,10 @@
         },
         "required": [
           "newName"
+        ],
+        "anyOf": [
+          { "required": ["itemName"] },
+          { "required": ["selectedItemId"] }
         ]
       },
       "RenameFolderRequest": {
@@ -2075,23 +2091,66 @@
           "operations"
         ]
       },
+      "RenameFileSuccess": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["success"],
+            "example": "success"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "file": { "type": "object", "additionalProperties": true },
+              "message": { "type": "string", "example": "Renamed: Drive/Folder/Old -> Drive/Folder/New" },
+              "pathBefore": { "type": "string" },
+              "pathAfter": { "type": "string" }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["status", "data"]
+      },
+
+      "MultipleMatchesResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["multiple_matches"], "example": "multiple_matches" },
+          "message": { "type": "string", "example": "Multiple files found with that name. Please pick one." },
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "driveName": { "type": "string" },
+                "breadcrumb": { "type": "string" },
+                "fullPath": { "type": "string" },
+                "path": { "type": "string" },
+                "parentId": { "type": "string" },
+                "webUrl": { "type": "string" },
+                "lastModified": { "type": "string", "format": "date-time" },
+                "size": { "type": "integer" }
+              },
+              "required": ["id", "name", "driveName", "fullPath", "path"]
+            }
+          }
+        },
+        "required": ["status", "message", "matches"]
+      },
       "RenameSuccess": {
         "type": "object",
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "success"
-            ],
+            "enum": ["success"],
             "example": "success"
           },
-          "message": {
-            "type": "string"
-          }
+          "message": { "type": "string" }
         },
-        "required": [
-          "status"
-        ]
+        "required": ["status"]
       },
       "BatchRenameSuccess": {
         "type": "object",

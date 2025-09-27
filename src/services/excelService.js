@@ -14,6 +14,23 @@ class ExcelService {
     this.siteId = process.env.SHAREPOINT_SITE_ID || "";
   }
 
+  // Convert Graph parentReference.path to a friendly absolute path starting with '/'
+  // Examples:
+  // - undefined/null -> '/' (root)
+  // - '/drives/{id}/root' -> '/'
+  // - '/drives/{id}/root:/Folder/Sub' -> '/Folder/Sub'
+  normalizeGraphParentPath(graphParentPath) {
+    if (!graphParentPath) return '/';
+    // Graph typically returns '/drives/{id}/root' or '/drives/{id}/root:/Folder/Sub'
+    const idx = graphParentPath.indexOf('root:');
+    if (idx >= 0) {
+      const afterRoot = graphParentPath.substring(idx + 'root:'.length) || '/';
+      return afterRoot === '' ? '/' : afterRoot;
+    }
+    // Fallback: if it already looks like a path, ensure leading slash
+    return graphParentPath.startsWith('/') ? graphParentPath : `/${graphParentPath}`;
+  }
+
   createGraphClient(accessToken) {
     return Client.init({
       authProvider: (done) => {
@@ -150,12 +167,18 @@ class ExcelService {
                 typeof item.name === "string" &&
                 item.name.toLowerCase().endsWith(".xlsx")
             )
-            .map((item) => ({
-              id: item.id,
-              name: item.name,
-              driveId: drive.id,
-              driveName: drive.name,
-            }));
+            .map((item) => {
+              const parentPath = this.normalizeGraphParentPath(item.parentReference?.path);
+              // Build fullPath per acceptance criteria: root '/<name>', nested '/Folder/Sub/<name>'
+              const fullPath = parentPath === '/' ? `/${item.name}` : `${parentPath.replace(/\/$/, '')}/${item.name}`;
+              return {
+                id: item.id,
+                name: item.name,
+                driveId: drive.id,
+                driveName: drive.name,
+                fullPath,
+              };
+            });
 
           allWorkbooks.push(...workbooks);
           logger.debug(
