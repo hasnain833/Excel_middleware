@@ -21,14 +21,74 @@ class ExcelService {
   // - '/drives/{id}/root:/Folder/Sub' -> '/Folder/Sub'
   normalizeGraphParentPath(graphParentPath) {
     if (!graphParentPath) return '/';
-    // Graph typically returns '/drives/{id}/root' or '/drives/{id}/root:/Folder/Sub'
-    const idx = graphParentPath.indexOf('root:');
-    if (idx >= 0) {
-      const afterRoot = graphParentPath.substring(idx + 'root:'.length) || '/';
-      return afterRoot === '' ? '/' : afterRoot;
+    // Handle common Graph patterns and strip root prefixes robustly
+    const stripped = this.stripGraphRootPrefixes(graphParentPath);
+    if (stripped !== null) {
+      return stripped === '' ? '/' : stripped;
     }
     // Fallback: if it already looks like a path, ensure leading slash
     return graphParentPath.startsWith('/') ? graphParentPath : `/${graphParentPath}`;
+  }
+
+  // Remove any of the known prefixes before the actual path portion.
+  // Returns null if no known prefix found and no conversion done.
+  stripGraphRootPrefixes(p) {
+    try {
+      // Normalize slashes
+      const s = String(p);
+      // Patterns: '/drive/root:', '/drives/{id}/root:', '/drives/{id}/root', '/sites/{anything}/drive/root:'
+      const m = s.match(/^\/(?:sites\/[^/]+\/)?drives?\/[^/]+\/root:?(.*)$/i) || s.match(/^\/drive\/root:?(.*)$/i);
+      if (m) {
+        const remainder = m[1] || '';
+        // Decode URI components per segment and collapse duplicate slashes
+        const decoded = remainder
+          .split('/')
+          .filter(Boolean)
+          .map(seg => {
+            try { return decodeURIComponent(seg); } catch { return seg; }
+          })
+          .join('/');
+        return decoded ? `/${decoded}` : '';
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  buildFullPath(parentPath, name) {
+    const base = parentPath && parentPath !== '/' ? parentPath.replace(/\/$/, '') : '';
+    return `${base}/${name}`.replace(/\/+/g, '/');
+  }
+
+  async getParentPathsBatch(graphClient, driveId, parentIds) {
+    // Use Graph $batch to fetch parentReference for multiple parentIds efficiently (max 20 per batch)
+    const result = new Map();
+    const chunks = [];
+    for (let i = 0; i < parentIds.length; i += 20) {
+      chunks.push(parentIds.slice(i, i + 20));
+    }
+    for (const chunk of chunks) {
+      const requests = chunk.map((pid, idx) => ({
+        id: `${pid}-${idx}`,
+        method: 'GET',
+        url: `/drives/${driveId}/items/${pid}?$select=parentReference`
+      }));
+      try {
+        const batchResp = await graphClient.api('/$batch').post({ requests });
+        for (const resp of batchResp.responses || []) {
+          const idParts = resp.id.split('-');
+          const pid = idParts[0];
+          if (resp.status === 200 && resp.body && resp.body.parentReference) {
+            const ppath = this.normalizeGraphParentPath(resp.body.parentReference.path);
+            result.set(pid, ppath);
+          }
+        }
+      } catch (e) {
+        logger.warn('Batch parent path lookup failed', { error: e.message });
+      }
+    }
+    return result; // Map of parentId -> normalized parent path
   }
 
   createGraphClient(accessToken) {
@@ -158,27 +218,42 @@ class ExcelService {
           const searchResponse = await graphClient
             .api(`/drives/${drive.id}/root/search(q='xlsx')`)
             .top(200)
+            .select('id,name,webUrl,parentReference,lastModifiedDateTime,file,createdDateTime')
             .get();
 
-          const workbooks = (searchResponse.value || [])
+          const rawItems = (searchResponse.value || [])
             .filter(
               (item) =>
                 item.file &&
                 typeof item.name === "string" &&
                 item.name.toLowerCase().endsWith(".xlsx")
-            )
-            .map((item) => {
-              const parentPath = this.normalizeGraphParentPath(item.parentReference?.path);
-              // Build fullPath per acceptance criteria: root '/<name>', nested '/Folder/Sub/<name>'
-              const fullPath = parentPath === '/' ? `/${item.name}` : `${parentPath.replace(/\/$/, '')}/${item.name}`;
-              return {
-                id: item.id,
-                name: item.name,
-                driveId: drive.id,
-                driveName: drive.name,
-                fullPath,
-              };
-            });
+            );
+
+          // Resolve missing parent paths via $batch where needed
+          const missingParentIds = rawItems
+            .filter(it => !it.parentReference || !it.parentReference.path)
+            .map(it => it.parentReference && it.parentReference.id)
+            .filter(Boolean);
+
+          let parentPathMap = new Map();
+          if (missingParentIds.length > 0) {
+            parentPathMap = await this.getParentPathsBatch(graphClient, drive.id, missingParentIds);
+          }
+
+          const workbooks = rawItems.map((item) => {
+            let parentPath = this.normalizeGraphParentPath(item.parentReference?.path);
+            if ((!item.parentReference || !item.parentReference.path) && item.parentReference?.id) {
+              parentPath = parentPathMap.get(item.parentReference.id) || parentPath;
+            }
+            const fullPath = this.buildFullPath(parentPath, item.name);
+            return {
+              id: item.id,
+              name: item.name,
+              driveId: drive.id,
+              driveName: drive.name,
+              fullPath,
+            };
+          });
 
           allWorkbooks.push(...workbooks);
           logger.debug(
