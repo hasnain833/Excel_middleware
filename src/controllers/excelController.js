@@ -23,6 +23,40 @@ class ExcelController {
     });
   });
 
+  clearData = catchAsync(async (req, res) => {
+    const auditContext = auditService.createAuditContext(req);
+    const nameParams = nameResolutionMixin.extractNameParams(req);
+    nameResolutionMixin.validateNameInput(nameParams);
+
+    const resolution = await nameResolutionMixin.resolveNames(req, nameParams);
+    if (!resolution.itemId) {
+      throw new AppError('Could not resolve file. Please check the file name and path.', 404);
+    }
+
+    // Optional worksheet and range
+    let resolvedWorksheetId = resolution.sheetId;
+    if (!resolvedWorksheetId && (req.body?.worksheetName || req.body?.sheetName)) {
+      const wsName = req.body.worksheetName || req.body.sheetName;
+      resolvedWorksheetId = await resolverService.resolveWorksheetIdByName(
+        req.accessToken,
+        resolution.driveId,
+        resolution.itemId,
+        wsName
+      );
+    }
+
+    const result = await excelService.clearData({
+      accessToken: req.accessToken,
+      driveId: resolution.driveId,
+      itemId: resolution.itemId,
+      worksheetId: resolvedWorksheetId,
+      range: req.body?.range,
+      auditContext,
+    });
+
+    res.json({ status: 'success', data: result, resolution: nameResolutionMixin.getResolutionSummary(resolution) });
+  });
+
   getWorksheets = catchAsync(async (req, res) => {
     const { driveId, itemId, driveName, itemName, itemPath } = req.query;
     const auditContext = auditService.createAuditContext(req);
@@ -94,9 +128,13 @@ class ExcelController {
       });
 
       // Extract worksheet from range if provided like Sheet1!A1:D10
-      const { sheetName, address } = resolverService.parseSheetAndAddress(
-        req.body.range
-      );
+      let address = req.body.range;
+      let sheetName = undefined;
+      if (typeof req.body.range === 'string' && req.body.range.length > 0) {
+        const parsed = resolverService.parseSheetAndAddress(req.body.range);
+        sheetName = parsed.sheetName;
+        address = parsed.address;
+      }
       let resolvedWorksheetId = resolution.sheetId;
       const effectiveWorksheetName =
         req.body.worksheetName || sheetName || resolution.sheetName;
@@ -115,7 +153,7 @@ class ExcelController {
         driveId: resolution.driveId,
         itemId: resolution.itemId,
         worksheetId: resolvedWorksheetId,
-        range: address,
+        range: address, // may be undefined to return usedRange
         auditContext,
       });
 

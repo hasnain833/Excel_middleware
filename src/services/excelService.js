@@ -1,7 +1,7 @@
 const { Client } = require("@microsoft/microsoft-graph-client");
 const auditService = require("./auditService");
 const logger = require("../config/logger");
-const permissions = require("../config/permissions");
+
 
 class ExcelService {
   constructor() {
@@ -53,6 +53,36 @@ class ExcelService {
       return null;
     } catch (_) {
       return null;
+    }
+  }
+
+  async clearData({ accessToken, driveId, itemId, worksheetId, range, auditContext }) {
+    try {
+      const graphClient = this.createGraphClient(accessToken);
+
+      // Determine worksheet: if not provided, use first worksheet
+      let wsId = worksheetId;
+      if (!wsId) {
+        const wsList = await graphClient
+          .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets`)
+          .get();
+        wsId = wsList?.value?.[0]?.id;
+      }
+
+      const apiBase = `/drives/${driveId}/items/${itemId}/workbook/worksheets/${wsId}`;
+      const target = range ? `${apiBase}/range(address='${range}')` : `${apiBase}/usedRange`;
+
+      await graphClient.api(`${target}/clear`).post({ applyTo: 'All' });
+
+      auditService.logSystemEvent({
+        event: 'EXCEL_CLEAR',
+        details: { driveId, itemId, worksheetId: wsId, range: range || 'usedRange', user: auditContext?.user },
+      });
+
+      return { cleared: true, worksheetId: wsId, range: range || 'usedRange' };
+    } catch (error) {
+      logger.error('❌ Excel service - failed to clear data:', error);
+      throw error;
     }
   }
 
@@ -301,10 +331,8 @@ class ExcelService {
       // Step 3: Search for Excel workbooks in all drives
       const workbooks = await this.getWorkbooksFromDrives(graphClient, drives);
 
-      // Step 4: Apply permission filtering
-      const filteredWorkbooks = workbooks.filter((workbook) =>
-        permissions.canAccessWorkbook(auditContext.user, workbook.id)
-      );
+      // Step 4: No app-level permission filtering (rely on SharePoint/Graph)
+      const filteredWorkbooks = workbooks;
 
       // Log audit event
       auditService.logSystemEvent({
@@ -333,11 +361,6 @@ class ExcelService {
 
   async getWorksheets(accessToken, driveId, itemId, auditContext) {
     try {
-      // Check workbook access permission
-      if (!permissions.canAccessWorkbook(auditContext.user, itemId)) {
-        throw new Error("Access denied to workbook");
-      }
-
       const graphClient = this.createGraphClient(accessToken);
 
       logger.debug("🔍 Fetching worksheets", { driveId, itemId });
@@ -353,10 +376,8 @@ class ExcelService {
         visibility: sheet.visibility,
       }));
 
-      // Filter worksheets based on permissions
-      const filteredWorksheets = worksheets.filter((worksheet) =>
-        permissions.canAccessWorksheet(auditContext.user, itemId, worksheet.id)
-      );
+      // No app-level worksheet permission filtering
+      const filteredWorksheets = worksheets;
 
       logger.debug("✅ Worksheets retrieved successfully", {
         workbookId: itemId,
@@ -382,41 +403,41 @@ class ExcelService {
       params;
 
     try {
-      // Check permissions
-      const hasPermission = permissions.canReadRange(
-        auditContext.user,
-        itemId,
-        worksheetId,
-        range
-      );
-
-      if (!hasPermission.allowed) {
-        auditService.logPermissionCheck({
-          ...auditContext,
-          workbookId: itemId,
-          worksheetId: worksheetId,
-          range: range,
-          requestedPermission: "READ",
-          granted: false,
-          reason: hasPermission.reason,
-        });
-        throw new Error(`Read access denied: ${hasPermission.reason}`);
-      }
+      // No app-level permission checks for read; rely on SharePoint/Graph
 
       const graphClient = this.createGraphClient(accessToken);
+
+      // Determine worksheet: if not provided, use first worksheet
+      let wsId = worksheetId;
+      if (!wsId) {
+        const wsList = await graphClient
+          .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets`)
+          .get();
+        wsId = wsList?.value?.[0]?.id;
+      }
 
       logger.debug("🔍 Reading Excel range", {
         driveId,
         itemId,
-        worksheetId,
+        worksheetId: wsId,
         range,
       });
 
-      const response = await graphClient
-        .api(
-          `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheetId}/range(address='${range}')`
-        )
-        .get();
+      let response;
+      if (!range) {
+        // Read entire usedRange if no explicit range provided
+        response = await graphClient
+          .api(
+            `/drives/${driveId}/items/${itemId}/workbook/worksheets/${wsId}/usedRange`
+          )
+          .get();
+      } else {
+        response = await graphClient
+          .api(
+            `/drives/${driveId}/items/${itemId}/workbook/worksheets/${wsId}/range(address='${range}')`
+          )
+          .get();
+      }
 
       const rangeData = {
         address: response.address,
@@ -427,15 +448,7 @@ class ExcelService {
         columnCount: response.columnCount,
       };
 
-      // Log successful permission check and operation
-      auditService.logPermissionCheck({
-        ...auditContext,
-        workbookId: itemId,
-        worksheetId: worksheetId,
-        range: range,
-        requestedPermission: "READ",
-        granted: true,
-      });
+      // Log read operation (without app-level permission enforcement)
 
       auditService.logReadOperation({
         ...auditContext,
@@ -483,33 +496,23 @@ class ExcelService {
         throw new Error("Values must be a non-empty array");
       }
 
-      // Check permissions
-      const hasPermission = permissions.canWriteRange(
-        auditContext.user,
-        itemId,
-        worksheetId,
-        range
-      );
-
-      if (!hasPermission.allowed) {
-        auditService.logPermissionCheck({
-          ...auditContext,
-          workbookId: itemId,
-          worksheetId: worksheetId,
-          range: range,
-          requestedPermission: "WRITE",
-          granted: false,
-          reason: hasPermission.reason,
-        });
-        throw new Error(`Write access denied: ${hasPermission.reason}`);
-      }
+      // No app-level permission checks for write; rely on SharePoint/Graph
 
       const graphClient = this.createGraphClient(accessToken);
+
+      // Determine worksheet: if not provided, use first worksheet
+      let wsId = worksheetId;
+      if (!wsId) {
+        const wsList = await graphClient
+          .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets`)
+          .get();
+        wsId = wsList?.value?.[0]?.id;
+      }
 
       logger.debug("🔍 Writing to Excel range", {
         driveId,
         itemId,
-        worksheetId,
+        worksheetId: wsId,
         range,
       });
 
@@ -529,10 +532,38 @@ class ExcelService {
         );
       }
 
+      // Determine target range: if not provided, append below usedRange
+      let targetAddress = range;
+      if (!targetAddress) {
+        const used = await graphClient
+          .api(
+            `/drives/${driveId}/items/${itemId}/workbook/worksheets/${wsId}/usedRange`
+          )
+          .get();
+        const addr = used.address || used.addressLocal || used?.address?.toString() || '';
+        // Parse something like 'Sheet1!A1:C5'
+        const match = addr.match(/!([A-Z]+)(\d+):([A-Z]+)(\d+)/);
+        let startCol = 'A';
+        let endCol = 'A';
+        let endRow = 0;
+        if (match) {
+          startCol = match[1];
+          endCol = match[3];
+          endRow = parseInt(match[4], 10) || 0;
+        } else {
+          // Fallback: use A1 with rowCount/colCount if present
+          endRow = (used.rowCount || 0);
+          endCol = 'A';
+        }
+        const nextRow = Math.max(1, endRow + 1);
+        // Build a start cell at first column of used range (or A) and nextRow
+        targetAddress = `${startCol}${nextRow}`;
+      }
+
       // Write new values
       const response = await graphClient
         .api(
-          `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheetId}/range(address='${range}')`
+          `/drives/${driveId}/items/${itemId}/workbook/worksheets/${wsId}/range(address='${targetAddress}')`
         )
         .patch({ values: values });
 
@@ -543,15 +574,7 @@ class ExcelService {
         columnCount: response.columnCount,
       };
 
-      // Log successful permission check and operation
-      auditService.logPermissionCheck({
-        ...auditContext,
-        workbookId: itemId,
-        worksheetId: worksheetId,
-        range: range,
-        requestedPermission: "WRITE",
-        granted: true,
-      });
+      // Log write operation (without app-level permission enforcement)
 
       auditService.logWriteOperation({
         ...auditContext,
@@ -565,7 +588,7 @@ class ExcelService {
       });
 
       logger.debug("✅ Range written successfully", {
-        range,
+        range: targetAddress,
         rowCount: updatedData.rowCount,
         columnCount: updatedData.columnCount,
       });

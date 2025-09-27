@@ -30,6 +30,46 @@
         }
       }
     },
+    "/api/excel/clear-data": {
+      "post": {
+        "summary": "Clear worksheet data (entire usedRange or a specific range)",
+        "operationId": "clearData",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ClearDataRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clear success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClearDataSuccess" }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EnvelopeError" }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EnvelopeError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/excel/workbooks": {
       "get": {
         "summary": "List Excel workbooks in the resolved drive/folder (recursive where applicable)",
@@ -1536,13 +1576,13 @@
             "type": "string"
           },
           "range": {
-            "type": "string"
+            "type": "string",
+            "description": "Optional. If omitted, the API returns the worksheet's usedRange."
           }
         },
         "required": [
           "driveName",
-          "itemName",
-          "range"
+          "itemName"
         ]
       },
       "ReadSuccess": {
@@ -1601,12 +1641,6 @@
           "itemPath": {
             "type": "string"
           },
-          "sheetName": {
-            "type": "string"
-          },
-          "range": {
-            "type": "string"
-          },
           "values": {
             "type": "array",
             "items": {
@@ -1619,47 +1653,36 @@
         "required": [
           "driveName",
           "itemName",
-          "range",
           "values"
         ]
       },
-      "WriteSuccess": {
+      "ClearDataRequest": {
         "type": "object",
         "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "success"
-            ],
-            "example": "success"
-          },
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" },
+          "itemPath": { "type": "string" },
+          "worksheetName": { "type": "string" },
+          "sheetName": { "type": "string" },
+          "range": { "type": "string", "description": "Optional. If omitted, clears usedRange of the worksheet." }
+        },
+        "required": ["driveName", "itemName"]
+      },
+      "ClearDataSuccess": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"], "example": "success" },
           "data": {
-            "oneOf": [
-              {
-                "type": "object",
-                "additionalProperties": true
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "message": {
-                    "type": "string"
-                  },
-                  "writtenTo": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "message",
-                  "writtenTo"
-                ]
-              }
-            ]
+            "type": "object",
+            "properties": {
+              "cleared": { "type": "boolean" },
+              "worksheetId": { "type": "string" },
+              "range": { "type": "string" }
+            },
+            "required": ["cleared"]
           }
         },
-        "required": [
-          "status"
-        ]
+        "required": ["status", "data"]
       },
       "BatchRequest": {
         "type": "object",

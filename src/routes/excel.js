@@ -41,7 +41,6 @@ router.post(
   "/write",
   writeLimiter, // Apply stricter rate limiting for write operations
   auditLogger.middleware(), // Log all write operations
-  rangeValidator.middleware(), // Validate range permissions
   validateRequest("writeRange", "body"),
   validateRangeValuesCompatibility,
   excelController.writeRange
@@ -85,6 +84,15 @@ router.post(
   auditLogger.middleware(), // Log all formatting operations
   validateRequest("excelFormat", "body"),
   excelEngineController.applyFormatting
+);
+
+// Clear data (range or whole sheet)
+router.post(
+  "/clear-data",
+  writeLimiter,
+  auditLogger.middleware(),
+  validateRequest("clearData", "body"),
+  excelController.clearData
 );
 
 // File and worksheet management

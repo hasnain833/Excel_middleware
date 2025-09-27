@@ -36,22 +36,23 @@ schemas.itemPath = Joi.string().pattern(/^\//).optional();
 // Names-only base object (IDs are not accepted anymore)
 const namesOnlyBase = Joi.object({
   driveName: schemas.driveName.required(),
-  itemName: schemas.itemName.required(),
+  itemName: schemas.itemName.optional(),
   itemPath: schemas.itemPath.optional(),
-});
+  fullPath: Joi.string().pattern(/^\//).optional(),
+}).or("itemName", "fullPath");
 
 const requestSchemas = {
   readRange: namesOnlyBase.concat(
     Joi.object({
       worksheetName: schemas.worksheetName.optional(),
-      range: schemas.range.required(),
+      range: Joi.string().min(1).optional(),
     })
   ),
 
   writeRange: namesOnlyBase.concat(
     Joi.object({
       worksheetName: schemas.worksheetName.optional(),
-      range: schemas.range.required(),
+      range: Joi.string().min(1).optional(),
       values: schemas.values.required(),
     })
   ),
@@ -152,6 +153,16 @@ const requestSchemas = {
     selectedItemId: Joi.string().min(1).optional(),
   }).or("itemName", "selectedItemId"),
 };
+
+// Clear data request: clear whole sheet (usedRange) or a specific range
+requestSchemas.clearData = Joi.object({
+  driveName: schemas.driveName.required(),
+  itemName: schemas.itemName.required(),
+  itemPath: schemas.itemPath.optional(),
+  worksheetName: schemas.worksheetName.optional(),
+  sheetName: schemas.worksheetName.optional(),
+  range: Joi.string().min(1).optional(),
+});
 
 const isValidRange = (range) => {
   const rangeRegex =
