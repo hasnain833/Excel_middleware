@@ -19,6 +19,12 @@ class FindReplaceController {
       logChanges = true,
       confirm = false,
       previewId,
+      // New optional params for enhanced workflow
+      mode, // "preview" | "apply"
+      strategy = "text", // "text" | "entityName"
+      sheetScope, // "ALL" or specific sheetName
+      selection, // array of matchId
+      selectAll,
     } = req.body;
 
     const auditContext = auditService.createAuditContext(req);
@@ -83,15 +89,56 @@ class FindReplaceController {
     }
 
     try {
-      // Step 1: Find all occurrences
-      const matches = await findReplaceService.findOccurrences(
-        req.accessToken,
+      // Strategy-specific discovery
+      let matches = [];
+      let previewItems = [];
+      const graphClient = findReplaceService.createGraphClient(req.accessToken);
+      const { byName: sheetsByName } = await findReplaceService.getWorksheetsMap(
+        graphClient,
         resolvedDriveId,
-        resolvedItemId,
-        searchTerm,
-        scope,
-        rangeSpec
+        resolvedItemId
       );
+
+      if (strategy === "entityName") {
+        // Entity label/value pairs; sheetScope can be "ALL" or a specific sheet name
+        matches = await findReplaceService.findEntityNameMatches(
+          req.accessToken,
+          resolvedDriveId,
+          resolvedItemId,
+          sheetScope
+        );
+        previewItems = findReplaceService.generateSelectablePreview(
+          matches,
+          searchTerm,
+          sheetsByName
+        );
+      } else {
+        // Text search
+        let effScope = scope;
+        let effSheetName = null;
+        // If sheetScope is provided, override scope behavior for convenience
+        if (sheetScope && sheetScope !== "ALL") {
+          effScope = "entire_sheet";
+          effSheetName = sheetScope;
+        } else if (sheetScope === "ALL") {
+          effScope = "all_sheets";
+        }
+
+        matches = await findReplaceService.findOccurrences(
+          req.accessToken,
+          resolvedDriveId,
+          resolvedItemId,
+          searchTerm,
+          effScope,
+          rangeSpec,
+          effSheetName
+        );
+        previewItems = findReplaceService.generateSelectablePreview(
+          matches,
+          searchTerm,
+          sheetsByName
+        );
+      }
 
       // If no matches found
       if (matches.length === 0) {
@@ -106,25 +153,27 @@ class FindReplaceController {
           },
         });
       }
-      if (!confirm) {
-        const preview = findReplaceService.generatePreview(matches, searchTerm);
+      // Decide flow: explicit mode or legacy confirm flag
+      const isPreview = mode === "preview" || (!mode && !confirm);
+      const isApply = mode === "apply" || (!mode && confirm);
+
+      if (isPreview) {
         const previewSessionId = `preview_${Date.now()}_${Math.random()
           .toString(36)
           .substr(2, 9)}`;
-        return res.json({
-          status: "preview",
-          message: this.generatePreviewMessage(preview, replaceTerm),
-          data: {
-            previewId: previewSessionId,
-            searchTerm,
-            replaceTerm,
-            scope,
-            rangeSpec,
-            preview,
-            confirmationRequired: true,
-            instructions:
-              'To proceed with replacement, send the same request with "confirm": true and include this previewId',
-          },
+        // Return selectable list with 409 to signal confirmation required
+        return res.status(409).json({
+          status: "confirmation_required",
+          message:
+            strategy === "entityName"
+              ? `Found ${previewItems.totalMatches} entity value cell(s) to update.`
+              : `Found ${previewItems.totalMatches} text match(es) for '${searchTerm}'.`,
+          previewId: previewSessionId,
+          strategy,
+          sheetScope: sheetScope || (scope === "all_sheets" ? "ALL" : undefined),
+          matches: previewItems.matches,
+          instructions:
+            "Resend the same request with mode='apply' and either selectAll=true or selection=[matchId,...] to apply.",
         });
       }
 
@@ -135,15 +184,43 @@ class FindReplaceController {
         );
       }
 
-      const result = await findReplaceService.performReplace(
-        req.accessToken,
-        resolvedDriveId,
-        resolvedItemId,
-        searchTerm,
-        replaceTerm,
-        matches,
-        { highlightChanges, logChanges }
-      );
+      // Apply only selected matches if provided
+      let matchesToApply = matches;
+      if (isApply && !selectAll && Array.isArray(selection) && selection.length > 0) {
+        // Build a lookup of matchId -> match
+        const selectable = findReplaceService.generateSelectablePreview(
+          matches,
+          searchTerm,
+          sheetsByName
+        );
+        const byId = new Map(selectable.matches.map((m) => [m.matchId, m]));
+        matchesToApply = selection
+          .map((id) => byId.get(id))
+          .filter(Boolean)
+          .map((m) => ({ sheet: m.sheet, cell: m.address, value: m.currentValue, oldValue: m.currentValue }));
+      }
+
+      let result;
+      if (strategy === "entityName") {
+        result = await findReplaceService.performEntityValueUpdate(
+          req.accessToken,
+          resolvedDriveId,
+          resolvedItemId,
+          matchesToApply,
+          replaceTerm,
+          { highlightChanges }
+        );
+      } else {
+        result = await findReplaceService.performReplace(
+          req.accessToken,
+          resolvedDriveId,
+          resolvedItemId,
+          searchTerm,
+          replaceTerm,
+          matchesToApply,
+          { highlightChanges, logChanges }
+        );
+      }
 
       // Log the operation
       auditService.logSystemEvent({
@@ -166,7 +243,10 @@ class FindReplaceController {
 
       res.json({
         status: "success",
-        message: `Successfully replaced ${result.summary.successful} occurrences of '${searchTerm}' with '${replaceTerm}'`,
+        message:
+          strategy === "entityName"
+            ? `Successfully updated ${result.summary.successful} entity value cell(s)`
+            : `Successfully replaced ${result.summary.successful} occurrences of '${searchTerm}' with '${replaceTerm}'`,
         data: {
           searchTerm,
           replaceTerm,

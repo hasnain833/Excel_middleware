@@ -109,6 +109,12 @@ const requestSchemas = {
     itemPath: schemas.itemPath.optional(),
     searchTerm: Joi.string().min(1).required(),
     replaceTerm: Joi.string().allow("").optional(),
+    // New optional workflow fields (backward compatible)
+    mode: Joi.string().valid("preview", "apply").optional(),
+    strategy: Joi.string().valid("text", "entityName").default("text"),
+    sheetScope: Joi.string().optional().description("ALL or a specific sheet name"),
+    selection: Joi.array().items(Joi.string()).optional(),
+    selectAll: Joi.boolean().optional(),
     scope: Joi.string()
       .valid("header_only", "specific_range", "entire_sheet", "all_sheets")
       .default("entire_sheet"),

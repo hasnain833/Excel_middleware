@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Excel GPT Middleware API",
-    "version": "1.2.1",
-    "description": "Express API middleware for Microsoft Graph Excel with name-based resolution, recursive search, Excel engine formatting, intelligent find/replace, and rename operations.\nNotes:\n- All Excel and rename endpoints are mounted under /api/excel. Health endpoints are under /health.\n- Name-vs-ID: All endpoints accept human-friendly names (driveName, folderName, fileName, sheetName) with automatic name-to-ID resolution and backward compatibility for IDs.\n- Path disambiguation: When duplicate file names exist, you can pass itemPath (e.g., '/Folder/Subfolder/My.xlsx').\n- Error envelope is consistent: { status: \"success\" | \"error\" | \"partial_success\" | \"preview\" | \"multiple_matches\" | \"no_matches\", ... }. Success responses include status: \"success\" and may include data.\n- Update 1.2.1: GET /api/excel/workbooks items include a 'fullPath' field representing the folder path (e.g., '/Folder/Sub/file.xlsx')."
+    "version": "1.2.2",
+    "description": "Express API middleware for Microsoft Graph Excel with name-based resolution, recursive search, Excel engine formatting, intelligent find/replace, and rename operations.\nNotes:\n- All Excel and rename endpoints are mounted under /api/excel. Health endpoints are under /health.\n- Name-vs-ID: All endpoints accept human-friendly names (driveName, folderName, fileName, sheetName) with automatic name-to-ID resolution and backward compatibility for IDs.\n- Path disambiguation: When duplicate file names exist, you can pass itemPath (e.g., '/Folder/Subfolder/My.xlsx').\n- Error envelope is consistent: { status: \"success\" | \"error\" | \"partial_success\" | \"preview\" | \"multiple_matches\" | \"no_matches\", ... }. Success responses include status: \"success\" and may include data.\n- Update 1.2.1: GET /api/excel/workbooks items include a 'fullPath' field representing the folder path (e.g., '/Folder/Sub/file.xlsx').\n- Update 1.2.2: POST /api/excel/find-replace supports preview → apply with mode, strategy (text/entityName), sheetScope, and selection/selectAll. Preview returns 409 confirmation_required with selectable matches."
   },
   "servers": [
     {
@@ -572,11 +572,14 @@
             }
           },
           "409": {
-            "description": "Multiple matches requiring user disambiguation",
+            "description": "Confirmation required (preview) or multiple matches requiring disambiguation",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MultipleMatchError"
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/ConfirmationRequired" },
+                    { "$ref": "#/components/schemas/MultipleMatchError" }
+                  ]
                 }
               }
             }

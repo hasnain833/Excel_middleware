@@ -23,7 +23,8 @@ class FindReplaceService {
     itemId,
     searchTerm,
     scope = "entire_sheet",
-    rangeSpec = null
+    rangeSpec = null,
+    sheetName = null
   ) {
     if (!driveId || !itemId || !searchTerm) {
       throw new AppError("driveId, itemId, and searchTerm are required", 400);
@@ -73,7 +74,8 @@ class FindReplaceService {
             graphClient,
             driveId,
             itemId,
-            searchTerm
+            searchTerm,
+            sheetName || null
           );
           matches.push(...sheetMatches);
           break;
@@ -341,6 +343,132 @@ class FindReplaceService {
         }
       });
     });
+  }
+
+  async getWorksheetsMap(graphClient, driveId, itemId) {
+    const resp = await graphClient
+      .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets`)
+      .get();
+    const byName = new Map();
+    const byId = new Map();
+    for (const ws of resp.value || []) {
+      byName.set(ws.name, ws.id);
+      byId.set(ws.id, ws.name);
+    }
+    return { byName, byId };
+  }
+
+  buildMatchId(sheetId, address) {
+    return `${sheetId}:${address}`;
+  }
+
+  generateSelectablePreview(matches, searchTerm, sheetsByName) {
+    // Ensure consistent shape and include matchId; try to attach sheetId when available
+    const items = matches.map((m) => {
+      const sheetId = m.sheetId || (sheetsByName && sheetsByName.get(m.sheet));
+      const base = {
+        matchId: sheetId ? this.buildMatchId(sheetId, m.cell || m.address) : `${m.sheet}:${m.cell || m.address}`,
+        sheet: m.sheet,
+        sheetId: sheetId,
+        address: m.cell || m.address,
+        currentValue: m.value ?? m.currentValue ?? m.oldValue,
+      };
+      if (m.labelText) {
+        base.labelText = m.labelText;
+        base.labelAddress = m.labelAddress;
+        base.context = m.context;
+      }
+      return base;
+    });
+    return {
+      searchTerm,
+      totalMatches: items.length,
+      matches: items,
+    };
+  }
+
+  async findEntityNameMatches(accessToken, driveId, itemId, sheetScope) {
+    const graphClient = this.createGraphClient(accessToken);
+    const matches = [];
+    const labelRegex = /^(entity|entity\s*name)$/i;
+    const worksheetsResp = await graphClient
+      .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets`)
+      .get();
+    const worksheets = worksheetsResp.value || [];
+
+    const targetSheets = (() => {
+      if (!sheetScope || sheetScope === "ALL") return worksheets;
+      const byName = worksheets.find((w) => w.name === sheetScope);
+      return byName ? [byName] : [];
+    })();
+
+    for (const ws of targetSheets) {
+      try {
+        const used = await graphClient
+          .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets/${ws.id}/usedRange`)
+          .get();
+        const values = used.values || [];
+        const startRow = used.address.match(/:([A-Z]+)(\d+)/)?.[2] || 1;
+        const startCol = used.address.match(/([A-Z]+)(\d+)/)?.[1] || "A";
+        const startColIndex = this.getColumnIndex(startCol);
+        const startRowIndex = parseInt(startRow);
+        for (let r = 0; r < values.length; r++) {
+          for (let c = 0; c < (values[r] || []).length; c++) {
+            const cellVal = values[r][c];
+            if (cellVal && String(cellVal).trim().match(labelRegex)) {
+              // Neighbor to the right is target value cell
+              const nbrC = c + 1;
+              const targetVal = values[r][nbrC];
+              const actualRow = startRowIndex + r;
+              const labelCol = this.getColumnLetter(startColIndex + c);
+              const targetCol = this.getColumnLetter(startColIndex + nbrC);
+              matches.push({
+                sheet: ws.name,
+                sheetId: ws.id,
+                cell: `${targetCol}${actualRow}`,
+                value: targetVal,
+                oldValue: targetVal,
+                labelText: String(cellVal),
+                labelAddress: `${labelCol}${actualRow}`,
+                context: `Row ${actualRow} near ${labelCol}${actualRow}`,
+              });
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn("EntityName scan failed for sheet", { sheet: ws.name, error: e.message });
+      }
+    }
+    return matches;
+  }
+
+  async performEntityValueUpdate(accessToken, driveId, itemId, matches, newValue, options = {}) {
+    const { highlightChanges = false } = options;
+    const graphClient = this.createGraphClient(accessToken);
+    const changes = [];
+    const errors = [];
+    for (const m of matches) {
+      try {
+        await graphClient
+          .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets('${m.sheet}')/range(address='${m.cell}')`)
+          .patch({ values: [[newValue]] });
+        if (highlightChanges) {
+          await this.highlightCell(graphClient, driveId, itemId, m.sheet, m.cell);
+        }
+        changes.push({ sheet: m.sheet, cell: m.cell, oldValue: m.oldValue, newValue });
+      } catch (err) {
+        errors.push({ sheet: m.sheet, cell: m.cell, error: err.message });
+      }
+    }
+    return {
+      changes,
+      errors,
+      summary: {
+        totalMatches: matches.length,
+        successful: changes.length,
+        failed: errors.length,
+      },
+    };
   }
 
   async performReplace(
