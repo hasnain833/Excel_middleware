@@ -10,7 +10,6 @@ const {
   handleNotFound,
   handleUnhandledRejections,
 } = require("./middleware/errorHandler");
-const { generalLimiter } = require("./middleware/rateLimiter");
 const excelRoutes = require("./routes/excel");
 const renameRoutes = require("./routes/rename");
 const healthRoutes = require("./routes/health");
@@ -110,8 +109,7 @@ class Server {
       next();
     });
 
-    // Apply general rate limiting
-    this.app.use(generalLimiter);
+    // Rate limiting removed
   }
 
   setupRoutes() {

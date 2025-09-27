@@ -10,7 +10,6 @@ This middleware is fully functional and tested with:
 - ✅ Role-based range protection for secure GPT operations
 - ✅ Enterprise audit logging with complete operation tracking
 - ✅ Comprehensive error handling and validation
-- ✅ Rate limiting and security measures
 
 ## 🚀 Enterprise Features
 
@@ -19,7 +18,7 @@ This middleware is fully functional and tested with:
 - **🏢 SharePoint Discovery**: Automatic site and drive enumeration
 - **🔒 Range Protection**: Configurable allowed/locked ranges for GPT safety
 - **📋 Audit Logging**: Complete operation history with pre/post values
-- **🛡️ Security**: Built-in rate limiting, validation, and error handling
+- **🛡️ Security**: Validation and error handling
 - **📈 Production Ready**: Monitoring, health checks, and graceful shutdown
 
 ## Project Structure
@@ -40,7 +39,6 @@ excel-gpt-middleware/
 │   ├── middleware/
 │   │   ├── validation.js         # Request validation
 │   │   ├── errorHandler.js       # Error handling
-│   │   └── rateLimiter.js        # Rate limiting
 │   ├── config/
 │   │   ├── database.js           # Database configuration
 │   │   ├── logger.js             # Winston logger setup
@@ -65,7 +63,6 @@ excel-gpt-middleware/
 
 - Azure AD Client Credentials authentication
 - Automatic token management and refresh
-- Rate limiting (100 requests per 15 minutes)
 - Input validation and sanitization
 - Comprehensive audit logging
 - CORS protection and security headers

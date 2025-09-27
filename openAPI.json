@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Excel GPT Middleware API",
-    "version": "1.2.2",
-    "description": "Express API middleware for Microsoft Graph Excel with name-based resolution, recursive search, Excel engine formatting, intelligent find/replace, and rename operations.\nNotes:\n- All Excel and rename endpoints are mounted under /api/excel. Health endpoints are under /health.\n- Name-vs-ID: All endpoints accept human-friendly names (driveName, folderName, fileName, sheetName) with automatic name-to-ID resolution and backward compatibility for IDs.\n- Path disambiguation: When duplicate file names exist, you can pass itemPath (e.g., '/Folder/Subfolder/My.xlsx').\n- Error envelope is consistent: { status: \"success\" | \"error\" | \"partial_success\" | \"preview\" | \"multiple_matches\" | \"no_matches\", ... }. Success responses include status: \"success\" and may include data.\n- Update 1.2.1: GET /api/excel/workbooks items include a 'fullPath' field representing the folder path (e.g., '/Folder/Sub/file.xlsx').\n- Update 1.2.2: POST /api/excel/find-replace supports preview → apply with mode, strategy (text/entityName), sheetScope, and selection/selectAll. Preview returns 409 confirmation_required with selectable matches."
+    "version": "1.2.3",
+    "description": "Express API middleware for Microsoft Graph Excel with name-based resolution, recursive search, Excel engine formatting, intelligent find/replace, and rename operations.\nNotes:\n- All Excel and rename endpoints are mounted under /api/excel. Health endpoints are under /health.\n- Name-vs-ID: All endpoints accept human-friendly names (driveName, folderName, fileName, sheetName) with automatic name-to-ID resolution and backward compatibility for IDs.\n- Path disambiguation: When duplicate file names exist, you can pass itemPath (e.g., '/Folder/Subfolder/My.xlsx').\n- Error envelope is consistent: { status: \"success\" | \"error\" | \"partial_success\" | \"preview\" | \"multiple_matches\" | \"no_matches\", ... }. Success responses include status: \"success\" and may include data.\n- Update 1.2.1: GET /api/excel/workbooks items include a 'fullPath' field representing the folder path (e.g., '/Folder/Sub/file.xlsx').\n- Update 1.2.2: POST /api/excel/find-replace supports preview → apply with mode, strategy (text/entityName), sheetScope, and selection/selectAll. Preview returns 409 confirmation_required with selectable matches.\n- Update 1.2.3: Removed custom rate limiting logic from the service; no changes to API contracts."
   },
   "servers": [
     {
@@ -1659,6 +1659,22 @@
           "values"
         ]
       },
+      "WriteSuccess": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"], "example": "success" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "worksheetId": { "type": "string" },
+              "range": { "type": "string" },
+              "valuesWritten": { "type": "integer", "description": "Number of cells written" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": ["status"]
+      },
       "ClearDataRequest": {
         "type": "object",
         "properties": {
@@ -1777,155 +1793,93 @@
           }
         },
         "required": [
-          "driveName",
           "itemName"
         ]
       },
       "FindReplaceRequest": {
         "type": "object",
         "properties": {
-          "siteId": {
-            "type": "string"
-          },
-          "siteUrl": {
-            "type": "string"
-          },
-          "sharepointHostname": {
-            "type": "string"
-          },
-          "sharepointSiteName": {
-            "type": "string"
-          },
-          "driveName": {
-            "type": "string"
-          },
-          "itemName": {
-            "type": "string"
-          },
-          "itemPath": {
-            "type": "string"
-          },
+          "siteId": { "type": "string" },
+          "siteUrl": { "type": "string" },
+          "sharepointHostname": { "type": "string" },
+          "sharepointSiteName": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" },
+          "itemPath": { "type": "string" },
           "scope": {
             "type": "string",
-            "enum": [
-              "header_only",
-              "specific_range",
-              "entire_sheet",
-              "all_sheets"
-            ],
+            "enum": ["header_only", "specific_range", "entire_sheet", "all_sheets"],
             "default": "entire_sheet"
           },
-          "sheetName": {
-            "type": "string"
-          },
-          "rangeSpec": {
-            "type": "string"
-          },
-          "searchTerm": {
-            "type": "string"
-          },
-          "replaceTerm": {
-            "type": "string"
-          },
-          "confirm": {
-            "type": "boolean",
-            "default": false
-          },
-          "highlightChanges": {
-            "type": "boolean",
-            "default": false
-          },
-          "logChanges": {
-            "type": "boolean",
-            "default": true
-          },
-          "previewId": {
-            "type": "string"
-          }
+          "sheetName": { "type": "string" },
+          "rangeSpec": { "type": "string" },
+          "searchTerm": { "type": "string" },
+          "replaceTerm": { "type": "string" },
+          "mode": { "type": "string", "enum": ["preview", "apply"] },
+          "strategy": { "type": "string", "enum": ["text", "entityName"], "default": "text" },
+          "sheetScope": { "type": "string" },
+          "selection": { "type": "array", "items": { "type": "string" } },
+          "selectAll": { "type": "boolean" },
+          "confirm": { "type": "boolean", "default": false },
+          "highlightChanges": { "type": "boolean", "default": false },
+          "logChanges": { "type": "boolean", "default": true },
+          "previewId": { "type": "string" }
         },
-        "required": [
-          "driveName",
-          "itemName",
-          "searchTerm"
-        ]
+        "required": ["driveName", "itemName", "searchTerm"]
       },
       "FindReplaceSuccess": {
         "type": "object",
         "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "success",
-              "preview",
-              "no_matches",
-              "partial_success"
-            ],
-            "example": "success"
-          },
-          "changes": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "summary": {
-            "type": "object",
-            "additionalProperties": true
-          }
+          "status": { "type": "string", "enum": ["success", "preview", "no_matches", "partial_success"], "example": "success" },
+          "changes": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "summary": { "type": "object", "additionalProperties": true }
         },
-        "required": [
-          "status"
-        ]
+        "required": ["status"]
       },
       "SearchTextRequest": {
         "type": "object",
         "properties": {
-          "siteId": {
-            "type": "string"
-          },
-          "siteUrl": {
-            "type": "string"
-          },
-          "sharepointHostname": {
-            "type": "string"
-          },
-          "sharepointSiteName": {
-            "type": "string"
-          },
-          "driveName": {
-            "type": "string"
-          },
-          "itemName": {
-            "type": "string"
-          },
-          "itemPath": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "header_only",
-              "specific_range",
-              "entire_sheet",
-              "all_sheets"
-            ],
-            "default": "entire_sheet"
-          },
-          "sheetName": {
-            "type": "string"
-          },
-          "rangeSpec": {
-            "type": "string"
-          },
-          "searchTerm": {
-            "type": "string"
+          "siteId": { "type": "string" },
+          "siteUrl": { "type": "string" },
+          "sharepointHostname": { "type": "string" },
+          "sharepointSiteName": { "type": "string" },
+          "driveName": { "type": "string" },
+          "itemName": { "type": "string" },
+          "itemPath": { "type": "string" },
+          "scope": { "type": "string", "enum": ["header_only", "specific_range", "entire_sheet", "all_sheets"], "default": "entire_sheet" },
+          "sheetName": { "type": "string" },
+          "rangeSpec": { "type": "string" },
+          "searchTerm": { "type": "string" }
+        },
+        "required": ["itemName", "searchTerm"]
+      },
+      "ConfirmationRequired": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["confirmation_required"], "example": "confirmation_required" },
+          "message": { "type": "string" },
+          "previewId": { "type": "string" },
+          "strategy": { "type": "string", "enum": ["text", "entityName"] },
+          "sheetScope": { "type": "string" },
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "matchId": { "type": "string" },
+                "sheet": { "type": "string" },
+                "sheetId": { "type": "string" },
+                "address": { "type": "string" },
+                "currentValue": { "type": ["string", "number", "boolean", "null"] },
+                "labelText": { "type": "string" },
+                "labelAddress": { "type": "string" },
+                "context": { "type": "string" }
+              },
+              "required": ["matchId", "sheet", "address"]
+            }
           }
         },
-        "required": [
-          "itemName",
-          "searchTerm"
-        ]
+        "required": ["status", "matches"]
       },
       "SearchTextSuccess": {
         "type": "object",

@@ -12,15 +12,12 @@ const {
   validateRangeValuesCompatibility,
   sanitizeRequest,
 } = require("../middleware/validation");
-const { writeLimiter, generalLimiter } = require("../middleware/rateLimiter");
-const rangeValidator = require("../middleware/rangeValidator");
 const auditLogger = require("../middleware/auditLogger");
 
 // Apply common middleware to all routes
 router.use(sanitizeRequest);
 router.use(ensureAuthenticated);
 router.use(logAuthenticatedRequest);
-router.use(generalLimiter);
 
 // All Routes
 router.get("/workbooks", excelController.getWorkbooks);
@@ -39,7 +36,6 @@ router.post(
 
 router.post(
   "/write",
-  writeLimiter, // Apply stricter rate limiting for write operations
   auditLogger.middleware(), // Log all write operations
   validateRequest("writeRange", "body"),
   validateRangeValuesCompatibility,
@@ -48,7 +44,6 @@ router.post(
 
 router.post(
   "/batch",
-  writeLimiter, // Apply stricter rate limiting since this can include writes
   excelController.batchOperations
 );
 
@@ -60,7 +55,6 @@ router.get(
 
 router.post(
   "/find-replace",
-  writeLimiter, // Apply stricter rate limiting for write operations
   auditLogger.middleware(), // Log all find-replace operations
   validateRequest("findReplace", "body"),
   findReplaceController.findReplace
@@ -80,7 +74,6 @@ router.get(
 
 router.post(
   "/format",
-  writeLimiter, // Apply stricter rate limiting for write operations
   auditLogger.middleware(), // Log all formatting operations
   validateRequest("excelFormat", "body"),
   excelEngineController.applyFormatting
@@ -89,7 +82,6 @@ router.post(
 // Clear data (range or whole sheet)
 router.post(
   "/clear-data",
-  writeLimiter,
   auditLogger.middleware(),
   validateRequest("clearData", "body"),
   excelController.clearData
@@ -98,7 +90,6 @@ router.post(
 // File and worksheet management
 router.post(
   "/create-file",
-  writeLimiter,
   auditLogger.middleware(),
   validateRequest("createFile", "body"),
   excelController.createFile
@@ -106,7 +97,6 @@ router.post(
 
 router.post(
   "/create-sheet",
-  writeLimiter,
   auditLogger.middleware(),
   validateRequest("createSheet", "body"),
   excelController.createSheet
@@ -114,7 +104,6 @@ router.post(
 
 router.delete(
   "/delete-file",
-  writeLimiter,
   auditLogger.middleware(),
   validateRequest("deleteFile", "queryOrBody"),
   excelController.deleteFile
@@ -122,7 +111,6 @@ router.delete(
 
 router.delete(
   "/delete-sheet",
-  writeLimiter,
   auditLogger.middleware(),
   validateRequest("deleteSheet", "body"),
   excelController.deleteSheet
