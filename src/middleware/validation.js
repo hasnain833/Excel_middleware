@@ -14,9 +14,7 @@ const schemas = {
   driveName: Joi.string().min(1).max(255),
   itemName: Joi.string().min(1).max(255),
   worksheetName: Joi.string().min(1).max(255),
-  tableName: Joi.string().min(1).max(255),
   values: Joi.array().items(Joi.array()).min(1),
-  rows: Joi.array().items(Joi.array()).min(1),
   userId: Joi.string().email().optional(),
   xlsxFileName: Joi.string()
     .pattern(/\.xlsx$/i)
@@ -55,21 +53,6 @@ const requestSchemas = {
       worksheetName: schemas.worksheetName.optional(),
       range: schemas.range.required(),
       values: schemas.values.required(),
-    })
-  ),
-
-  readTable: namesOnlyBase.concat(
-    Joi.object({
-      worksheetName: schemas.worksheetName.optional(),
-      tableName: schemas.tableName.required(),
-    })
-  ),
-
-  addTableRows: namesOnlyBase.concat(
-    Joi.object({
-      worksheetName: schemas.worksheetName.optional(),
-      tableName: schemas.tableName.required(),
-      rows: schemas.rows.required(),
     })
   ),
 
@@ -119,21 +102,6 @@ const requestSchemas = {
     itemPath: schemas.itemPath.optional(),
   }),
 
-  cellInfo: Joi.object({
-    driveName: schemas.driveName.required(),
-    itemName: schemas.itemName.required(),
-    itemPath: schemas.itemPath.optional(),
-    sheetName: schemas.worksheetName.optional(),
-    cellAddress: Joi.string().min(1).required(),
-  }),
-
-  worksheetInfo: Joi.object({
-    driveName: schemas.driveName.required(),
-    itemName: schemas.itemName.required(),
-    itemPath: schemas.itemPath.optional(),
-    sheetName: schemas.worksheetName.optional(),
-  }),
-
   findReplace: Joi.object({
     driveName: schemas.driveName.required(),
     itemName: schemas.itemName.required(),
@@ -174,17 +142,15 @@ const requestSchemas = {
     }).optional(),
   }),
 
-  validateFormula: Joi.object({
-    driveName: schemas.driveName.required(),
-    itemName: schemas.itemName.required(),
+  // New: rename file with optional driveName and support for selectedItemId
+  renameFile: Joi.object({
+    driveName: schemas.driveName.optional(),
+    itemName: schemas.itemName.optional(),
     itemPath: schemas.itemPath.optional(),
-    sheetName: schemas.worksheetName.optional(),
-    formula: Joi.object({
-      expression: Joi.string().min(1).required(),
-      targetCell: Joi.string().min(1).optional(),
-      overwrite: Joi.boolean().optional(),
-    }).required(),
-  }),
+    oldName: Joi.string().min(1).optional(),
+    newName: Joi.string().min(1).required(),
+    selectedItemId: Joi.string().min(1).optional(),
+  }).or("itemName", "selectedItemId"),
 };
 
 const isValidRange = (range) => {

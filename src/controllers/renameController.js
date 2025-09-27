@@ -13,7 +13,8 @@ class RenameController {
       itemName,
       itemPath,
       oldName,
-      newName
+      newName,
+      selectedItemId
     } = req.body;
 
     const auditContext = auditService.createAuditContext(req);
@@ -22,26 +23,98 @@ class RenameController {
       throw new AppError('newName is required', 400);
     }
 
-    // Resolve drive and item IDs from names only
-    const resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
-    let resolvedItemId;
-    try {
-      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
-    } catch (err) {
-      if (err.isMultipleMatches) {
-        if (itemPath) {
-          resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
-        } else {
-          // Return multiple matches for user selection
-          return res.status(409).json({
-            status: 'multiple_matches',
-            message: 'Multiple files found with the same name. Please specify itemPath or select from the list.',
-            matches: err.matches.map(match => ({ id: match.id, name: match.name, path: match.path, parentId: match.parentId }))
-          });
-        }
-      } else {
-        throw err;
+    // Helper to build display paths from Graph parentReference.path
+    const toDisplayPath = (drvName, graphParentPath, fileNm) => {
+      let folderPath = '';
+      if (graphParentPath) {
+        const idx = graphParentPath.indexOf('root:');
+        folderPath = idx >= 0 ? graphParentPath.substring(idx + 'root:'.length) : graphParentPath;
       }
+      if (!folderPath || folderPath === '/') folderPath = '';
+      // Ensure no double slashes
+      const prefix = drvName ? `${drvName}` : '';
+      const combined = [prefix, folderPath.replace(/^\/?/, ''), fileNm].filter(Boolean).join('/');
+      return combined;
+    };
+
+    let resolvedDriveId;
+    let resolvedDriveName = driveName || null;
+    let resolvedItemId;
+
+    // 1) If selectedItemId is provided (second-call flow), resolve drive automatically if needed
+    if (selectedItemId) {
+      if (driveName) {
+        resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+        resolvedDriveName = driveName;
+      } else {
+        const located = await resolverService.findDriveForItemId(req.accessToken, selectedItemId);
+        resolvedDriveId = located.driveId;
+        resolvedDriveName = located.driveName;
+      }
+      resolvedItemId = selectedItemId;
+    } else if (driveName) {
+      // 2) Backward compatible path: driveName provided
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+      resolvedDriveName = driveName;
+      try {
+        resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+      } catch (err) {
+        if (err.isMultipleMatches) {
+          if (itemPath) {
+            resolvedItemId = await resolverService.resolveItemIdByPath(req.accessToken, resolvedDriveId, itemName, itemPath);
+          } else {
+            const matches = (err.matches || []).map((m) => {
+              const breadcrumb = `${resolvedDriveName} `.replace(/\u000b/g, '›'); // ensure separator
+              const fullPath = `${resolvedDriveName}${m.path}`.replace(/\\/g, '/');
+              return {
+                id: m.id,
+                name: m.name,
+                driveName: resolvedDriveName,
+                breadcrumb: `${resolvedDriveName} › ${m.path.split('/').filter(Boolean).slice(0, -1).join(' › ')}`,
+                fullPath,
+                path: m.path,
+                parentId: m.parentId,
+              };
+            });
+            return res.status(409).json({
+              status: 'multiple_matches',
+              message: 'Multiple files found with that name. Please pick one.',
+              matches,
+            });
+          }
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      // 3) No driveName: search across all drives
+      if (!itemName) {
+        throw new AppError('Either itemName or selectedItemId is required', 400);
+      }
+      const allMatches = await resolverService.searchAllDrivesForFileByExactName(req.accessToken, itemName);
+      if (allMatches.length === 0) {
+        throw new AppError(`File '${itemName}' not found across any accessible drives`, 404);
+      }
+      if (allMatches.length > 1) {
+        const matches = allMatches.map((m) => ({
+          id: m.id,
+          name: m.name,
+          driveName: m.driveName,
+          breadcrumb: `${m.driveName} › ${m.path.split('/').filter(Boolean).slice(0, -1).join(' › ')}`,
+          fullPath: `${m.driveName}${m.path}`,
+          path: m.path,
+          parentId: m.parentId,
+        }));
+        return res.status(409).json({
+          status: 'multiple_matches',
+          message: 'Multiple files found with that name. Please pick one.',
+          matches,
+        });
+      }
+      const only = allMatches[0];
+      resolvedDriveId = only.driveId;
+      resolvedDriveName = only.driveName;
+      resolvedItemId = only.id;
     }
 
     const result = await renameService.renameFile(
@@ -53,11 +126,17 @@ class RenameController {
       auditContext
     );
 
+    // Build pathBefore and pathAfter for message
+    const pathBefore = toDisplayPath(resolvedDriveName, result.path, result.oldName);
+    const pathAfter = toDisplayPath(resolvedDriveName, result.path, result.newName);
+
     res.json({
       status: 'success',
       data: {
         file: result,
-        message: `File renamed from '${result.oldName}' to '${result.newName}'`
+        message: `Renamed: ${pathBefore} -> ${pathAfter}`,
+        pathBefore,
+        pathAfter,
       }
     });
   });

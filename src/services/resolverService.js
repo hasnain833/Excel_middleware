@@ -352,6 +352,66 @@ class ResolverService {
       throw err;
     }
   }
+
+  // List all drives available in the current site
+  async listAllDrives(accessToken) {
+    try {
+      const graphClient = this.createGraphClient(accessToken);
+      const siteId = await excelService.getSiteId(graphClient);
+      const drives = await excelService.getDrives(graphClient, siteId);
+      return drives || [];
+    } catch (err) {
+      logger.error('Failed to list drives', { error: err.message });
+      throw err;
+    }
+  }
+
+  // Search across all drives for an exact file name match
+  async searchAllDrivesForFileByExactName(accessToken, fileName) {
+    const matches = [];
+    const fileNameLc = String(fileName).toLowerCase();
+    const drives = await this.listAllDrives(accessToken);
+    for (const drive of drives) {
+      try {
+        const graphClient = this.createGraphClient(accessToken);
+        const driveMatches = await this.recursiveSearchForFile(
+          graphClient,
+          drive.id,
+          fileName
+        );
+
+        for (const m of driveMatches) {
+          if (String(m.name).toLowerCase() === fileNameLc) {
+            matches.push({
+              ...m,
+              driveId: drive.id,
+              driveName: drive.name,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn('Failed searching drive', { driveId: drive.id, error: err.message });
+        // continue with other drives
+      }
+    }
+    return matches;
+  }
+
+  // Find which drive contains the given itemId
+  async findDriveForItemId(accessToken, itemId) {
+    const drives = await this.listAllDrives(accessToken);
+    for (const drive of drives) {
+      try {
+        const graphClient = this.createGraphClient(accessToken);
+        await graphClient.api(`/drives/${drive.id}/items/${itemId}`).select('id').get();
+        return { driveId: drive.id, driveName: drive.name };
+      } catch (err) {
+        // ignore 404 and continue
+        continue;
+      }
+    }
+    throw new AppError('selectedItemId not found in any accessible drive', 404);
+  }
 }
 
 module.exports = new ResolverService();
