@@ -18,7 +18,7 @@ const schemas = {
   userId: Joi.string().email().optional(),
   xlsxFileName: Joi.string()
     .pattern(/\.xlsx$/i)
-    .message("fileName must end with .xlsx"),
+    .message("fileName must end with .xlsx").optional(),
   parentPath: Joi.string().pattern(/^\//).optional(),
   position: Joi.number().integer().min(0).optional(),
   itemPath: Joi.string().pattern(/^\//).optional(),
