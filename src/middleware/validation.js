@@ -64,8 +64,11 @@ const requestSchemas = {
   }),
 
   searchFiles: Joi.object({
-    driveName: schemas.driveName.required(),
+    driveName: schemas.driveName.optional(),
     fileName: Joi.string().min(1).required(),
+    matchMode: Joi.string().valid("exact", "contains").optional(),
+    excelOnly: Joi.boolean().optional(),
+    pathsOnly: Joi.boolean().optional(),
   }),
 
   createFile: Joi.object({

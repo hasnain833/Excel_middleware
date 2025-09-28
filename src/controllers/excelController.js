@@ -406,57 +406,108 @@ class ExcelController {
 
 
   searchFiles = catchAsync(async (req, res) => {
-    const { driveName, fileName } = req.query;
+    const { driveName, fileName, matchMode, excelOnly = false, pathsOnly = false } = req.query;
     const auditContext = auditService.createAuditContext(req);
 
-    if (!driveName || !fileName) {
+    if (!fileName) {
       return res.status(400).json({
         status: "error",
         error: {
           code: 400,
-          message: "Both driveName and fileName are required",
+          message: "fileName is required",
         },
         timestamp: new Date().toISOString(),
       });
     }
 
     try {
-      // Resolve drive ID
-      const driveId = await resolverService.resolveDriveIdByName(
-        req.accessToken,
-        driveName
-      );
+      // Decide effective matchMode default: if fileName contains a dot -> exact else contains
+      const hasDot = String(fileName).includes(".");
+      const effMatchMode = matchMode || (hasDot ? "exact" : "contains");
 
-      // Create graph client and perform recursive search
-      const graphClient = resolverService.createGraphClient(req.accessToken);
-      const matches = await resolverService.recursiveSearchForFile(
-        graphClient,
-        driveId,
-        fileName
-      );
+      let allMatches = [];
+      const options = { matchMode: effMatchMode, excelOnly: String(excelOnly) === "true" || excelOnly === true };
+
+      if (driveName) {
+        // Search within a specific drive only
+        const driveId = await resolverService.resolveDriveIdByName(
+          req.accessToken,
+          driveName
+        );
+        const graphClient = resolverService.createGraphClient(req.accessToken);
+        const matches = await resolverService.recursiveSearchForFile(
+          graphClient,
+          driveId,
+          fileName,
+          "",
+          "root",
+          0,
+          20,
+          options
+        );
+        allMatches = matches.map((m) => ({ ...m, driveId, driveName }));
+      } else {
+        // Enumerate all drives in current site and search each
+        const drives = await resolverService.listAllDrives(req.accessToken);
+        for (const drv of drives) {
+          try {
+            const graphClient = resolverService.createGraphClient(req.accessToken);
+            const matches = await resolverService.recursiveSearchForFile(
+              graphClient,
+              drv.id,
+              fileName,
+              "",
+              "root",
+              0,
+              20,
+              options
+            );
+            allMatches.push(
+              ...matches.map((m) => ({ ...m, driveId: drv.id, driveName: drv.name }))
+            );
+          } catch (e) {
+            logger.warn("Drive search failed", { driveId: drv.id, error: e.message });
+          }
+        }
+      }
+
+      // Normalize result shape and paths
+      const normalized = allMatches.map((m) => ({
+        id: m.id,
+        name: m.name,
+        path: resolverService.normalizePath(m.path),
+        parentId: m.parentId,
+        driveId: m.driveId,
+        driveName: m.driveName,
+      }));
 
       auditService.logSystemEvent({
         event: "FILE_SEARCH",
         details: {
-          driveName,
+          scope: driveName ? "single_drive" : "all_drives",
+          driveName: driveName || null,
           fileName,
-          matchCount: matches.length,
+          matchMode: effMatchMode,
+          excelOnly: !!options.excelOnly,
+          matchCount: normalized.length,
           requestedBy: auditContext.user,
         },
       });
+
+      if (String(pathsOnly) === "true" || pathsOnly === true) {
+        return res.json({
+          status: "success",
+          data: normalized.map((m) => m.path),
+        });
+      }
 
       res.json({
         status: "success",
         data: {
           fileName,
-          driveName,
-          matches: matches.map((match) => ({
-            id: match.id,
-            name: match.name,
-            path: match.path,
-            parentId: match.parentId,
-          })),
-          totalMatches: matches.length,
+          scope: driveName ? { driveName } : { allDrives: true },
+          matches: normalized,
+          totalMatches: normalized.length,
         },
       });
     } catch (err) {

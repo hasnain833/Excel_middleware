@@ -154,7 +154,8 @@ class ResolverService {
     currentPath = "",
     folderId = "root",
     depth = 0,
-    maxDepth = 20
+    maxDepth = 20,
+    options = undefined
   ) {
     // Prevent infinite recursion
     if (depth > maxDepth) {
@@ -167,6 +168,9 @@ class ResolverService {
 
     const matches = [];
     const fileNameLc = String(fileName).toLowerCase();
+    const opt = options || {};
+    const matchMode = opt.matchMode || "exact"; // default exact for backward-compat callers
+    const excelOnly = !!opt.excelOnly;
 
     try {
       // Get all items in current folder
@@ -180,10 +184,17 @@ class ResolverService {
 
       // Check for file matches in current folder
       for (const item of items) {
-        if (!item.folder && String(item.name).toLowerCase() === fileNameLc) {
-          const fullPath = currentPath
-            ? `${currentPath}/${item.name}`
-            : `/${item.name}`;
+        if (item.folder) continue;
+        const itemNameLc = String(item.name).toLowerCase();
+        if (excelOnly && !/\.xlsx$/i.test(item.name)) continue;
+        let isMatch = false;
+        if (matchMode === "exact") {
+          isMatch = itemNameLc === fileNameLc;
+        } else {
+          isMatch = itemNameLc.includes(fileNameLc);
+        }
+        if (isMatch) {
+          const fullPath = this.normalizePath(currentPath ? `${currentPath}/${item.name}` : `/${item.name}`);
           matches.push({
             id: item.id,
             name: item.name,
@@ -200,9 +211,7 @@ class ResolverService {
       // Recursively search in subfolders
       const folders = items.filter((item) => item.folder);
       for (const folder of folders) {
-        const subPath = currentPath
-          ? `${currentPath}/${folder.name}`
-          : `/${folder.name}`;
+        const subPath = this.normalizePath(currentPath ? `${currentPath}/${folder.name}` : `/${folder.name}`);
         logger.debug(`Searching in folder: ${subPath}`, {
           driveId,
           folderId: folder.id,
@@ -217,7 +226,8 @@ class ResolverService {
             subPath,
             folder.id,
             depth + 1,
-            maxDepth
+            maxDepth,
+            opt
           );
           matches.push(...subMatches);
         } catch (subErr) {
@@ -241,6 +251,20 @@ class ResolverService {
     }
 
     return matches;
+  }
+
+  normalizePath(p) {
+    if (!p) return "/";
+    // Replace backslashes, collapse duplicates, ensure single leading slash
+    let out = String(p).replace(/\\+/g, "/");
+    out = out.replace(/\/+/g, "/");
+    // Remove trailing slash except root
+    if (out.length > 1) out = out.replace(/\/$/, "");
+    // Ensure leading slash
+    if (!out.startsWith("/")) out = "/" + out;
+    // Remove any duplicate leading slashes
+    out = out.replace(/^\/+/, "/");
+    return out;
   }
 
   async resolveItemIdByPath(accessToken, driveId, itemName, itemPath) {
