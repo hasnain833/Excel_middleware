@@ -21,10 +21,26 @@ class FindReplaceController {
       previewId,
       // New optional params for enhanced workflow
       mode, // "preview" | "apply"
-      strategy = "text", // "text" | "entityName"
+      strategy = "text", // "text" | "entityName" | "labelNeighbor"
       sheetScope, // "ALL" or specific sheetName
       selection, // array of matchId
       selectAll,
+      // text strategy knobs
+      caseSensitive = false,
+      wholeWord = false,
+      includeFormulas = false,
+      replaceInside = true,
+      replaceMode = "all",
+      // labelNeighbor knobs
+      label,
+      labelMode = "exact",
+      caseSensitiveLabel = false,
+      stripColons = true,
+      fuzzyThreshold = 0.85,
+      directions = ["down", "right"],
+      maxDown = 3,
+      maxRight = 3,
+      valueSearchTerm,
     } = req.body;
 
     const auditContext = auditService.createAuditContext(req);
@@ -99,13 +115,33 @@ class FindReplaceController {
         resolvedItemId
       );
 
+      // Map legacy alias 'entityName' to 'labelNeighbor' with default labels
       if (strategy === "entityName") {
-        // Entity label/value pairs; sheetScope can be "ALL" or a specific sheet name
-        matches = await findReplaceService.findEntityNameMatches(
+        strategy = "labelNeighbor";
+        if (!label) {
+          // default labels for entity name
+          label = ["Entity name", "Entity", "Entity Name"];
+        }
+      }
+
+      if (strategy === "labelNeighbor") {
+        const lnOpts = {
+          label,
+          labelMode,
+          caseSensitiveLabel,
+          stripColons,
+          fuzzyThreshold,
+          directions,
+          maxDown,
+          maxRight,
+          valueSearchTerm,
+        };
+        matches = await findReplaceService.findLabelNeighborMatches(
           req.accessToken,
           resolvedDriveId,
           resolvedItemId,
-          sheetScope
+          sheetScope,
+          lnOpts
         );
         previewItems = findReplaceService.generateSelectablePreview(
           matches,
@@ -165,8 +201,8 @@ class FindReplaceController {
         return res.status(409).json({
           status: "confirmation_required",
           message:
-            strategy === "entityName"
-              ? `Found ${previewItems.totalMatches} entity value cell(s) to update.`
+            strategy === "labelNeighbor"
+              ? `Found ${previewItems.totalMatches} field(s) by label neighbor.`
               : `Found ${previewItems.totalMatches} text match(es) for '${searchTerm}'.`,
           previewId: previewSessionId,
           strategy,
@@ -201,8 +237,8 @@ class FindReplaceController {
       }
 
       let result;
-      if (strategy === "entityName") {
-        result = await findReplaceService.performEntityValueUpdate(
+      if (strategy === "labelNeighbor") {
+        result = await findReplaceService.performLabelNeighborUpdate(
           req.accessToken,
           resolvedDriveId,
           resolvedItemId,
@@ -218,7 +254,7 @@ class FindReplaceController {
           searchTerm,
           replaceTerm,
           matchesToApply,
-          { highlightChanges, logChanges }
+          { highlightChanges, logChanges, caseSensitive, wholeWord, includeFormulas, replaceInside, replaceMode }
         );
       }
 
@@ -244,8 +280,8 @@ class FindReplaceController {
       res.json({
         status: "success",
         message:
-          strategy === "entityName"
-            ? `Successfully updated ${result.summary.successful} entity value cell(s)`
+          strategy === "labelNeighbor"
+            ? `Successfully updated ${result.summary.successful} field(s)`
             : `Successfully replaced ${result.summary.successful} occurrences of '${searchTerm}' with '${replaceTerm}'`,
         data: {
           searchTerm,

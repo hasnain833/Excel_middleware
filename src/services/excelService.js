@@ -14,11 +14,7 @@ class ExcelService {
     this.siteId = process.env.SHAREPOINT_SITE_ID || "";
   }
 
-  // Convert Graph parentReference.path to a friendly absolute path starting with '/'
-  // Examples:
-  // - undefined/null -> '/' (root)
-  // - '/drives/{id}/root' -> '/'
-  // - '/drives/{id}/root:/Folder/Sub' -> '/Folder/Sub'
+
   normalizeGraphParentPath(graphParentPath) {
     if (!graphParentPath) return '/';
     // Handle common Graph patterns and strip root prefixes robustly
@@ -30,8 +26,6 @@ class ExcelService {
     return graphParentPath.startsWith('/') ? graphParentPath : `/${graphParentPath}`;
   }
 
-  // Remove any of the known prefixes before the actual path portion.
-  // Returns null if no known prefix found and no conversion done.
   stripGraphRootPrefixes(p) {
     try {
       // Normalize slashes

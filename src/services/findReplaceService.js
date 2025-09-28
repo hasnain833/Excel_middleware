@@ -11,6 +11,241 @@ class FindReplaceService {
     this.ttlMs = 2 * 60 * 1000; // 2 minutes TTL for search results
   }
 
+  // New: Generic label matcher utility
+  _normalizeLabelText(s, stripColons = true) {
+    if (s == null) return "";
+    let out = String(s);
+    if (stripColons) out = out.replace(/:+\s*$/, "");
+    return out.trim();
+  }
+
+  _fuzzySimilarity(a, b) {
+    // Simple normalized Levenshtein similarity (1 - distance/maxLen)
+    const s1 = a.toLowerCase();
+    const s2 = b.toLowerCase();
+    const m = s1.length;
+    const n = s2.length;
+    if (m === 0 && n === 0) return 1;
+    const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+        dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+      }
+    }
+    const dist = dp[m][n];
+    return 1 - dist / Math.max(m, n);
+  }
+
+  _labelMatches(cellText, labels, { labelMode = "exact", caseSensitiveLabel = false, stripColons = true, fuzzyThreshold = 0.85 }) {
+    if (!cellText) return false;
+    const txt = this._normalizeLabelText(cellText, stripColons);
+    const candidates = Array.isArray(labels) ? labels : [labels];
+    if (candidates.length === 0) return false;
+    for (const lab of candidates) {
+      if (lab == null || lab === "") continue;
+      const normLab = this._normalizeLabelText(lab, stripColons);
+      if (labelMode === "regex") {
+        try {
+          const flags = caseSensitiveLabel ? "" : "i";
+          const re = new RegExp(normLab, flags);
+          if (re.test(txt)) return true;
+        } catch (_) {
+          // ignore invalid regex; treat as non-match
+        }
+      } else if (labelMode === "fuzzy") {
+        const sim = this._fuzzySimilarity(caseSensitiveLabel ? txt : txt.toLowerCase(), caseSensitiveLabel ? normLab : normLab.toLowerCase());
+        if (sim >= fuzzyThreshold) return true;
+      } else {
+        // exact
+        if (caseSensitiveLabel) {
+          if (txt === normLab) return true;
+        } else if (txt.toLowerCase() === normLab.toLowerCase()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  async _readUsedRange(graphClient, driveId, itemId, worksheetId) {
+    const used = await graphClient
+      .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheetId}/usedRange(valuesOnly=true)`) // values only
+      .get();
+    const values = used.values || [];
+    const startRow = used.address?.match(/:([A-Z]+)(\d+)/)?.[2] || used.address?.match(/([A-Z]+)(\d+)/)?.[2] || 1;
+    const startCol = used.address?.match(/([A-Z]+)(\d+)/)?.[1] || "A";
+    const startColIndex = this.getColumnIndex(startCol);
+    const startRowIndex = parseInt(startRow);
+    return { values, startColIndex, startRowIndex, address: used.address };
+  }
+
+  // New: labelNeighbor strategy
+  async findLabelNeighborMatches(accessToken, driveId, itemId, sheetScope, opts = {}) {
+    const {
+      label = [],
+      labelMode = "exact",
+      caseSensitiveLabel = false,
+      stripColons = true,
+      fuzzyThreshold = 0.85,
+      directions = ["down", "right"],
+      maxDown = 3,
+      maxRight = 3,
+      valueSearchTerm,
+    } = opts;
+
+    const graphClient = this.createGraphClient(accessToken);
+    const matches = [];
+    const worksheetsResp = await graphClient
+      .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets`)
+      .get();
+
+    const worksheets = worksheetsResp.value || [];
+    const targetSheets = (() => {
+      if (!sheetScope || sheetScope === "ALL") return worksheets;
+      const byName = worksheets.find((w) => w.name === sheetScope);
+      return byName ? [byName] : [];
+    })();
+
+    for (const ws of targetSheets) {
+      try {
+        const { values, startColIndex, startRowIndex } = await this._readUsedRange(
+          graphClient,
+          driveId,
+          itemId,
+          ws.id
+        );
+        for (let r = 0; r < values.length; r++) {
+          const row = values[r] || [];
+          for (let c = 0; c < row.length; c++) {
+            const cellVal = row[c];
+            if (!this._labelMatches(cellVal, label, { labelMode, caseSensitiveLabel, stripColons, fuzzyThreshold })) continue;
+
+            // search neighbors per directions
+            let target = null;
+            for (const dir of directions) {
+              if (dir === "down") {
+                for (let k = 1; k <= maxDown; k++) {
+                  const rr = r + k;
+                  if (rr >= values.length) break;
+                  const nbrVal = (values[rr] || [])[c];
+                  if (nbrVal !== undefined && nbrVal !== null && String(nbrVal).length > 0) {
+                    target = { rr, cc: c, nbrVal };
+                    break;
+                  }
+                }
+              } else if (dir === "right") {
+                for (let k = 1; k <= maxRight; k++) {
+                  const cc = c + k;
+                  const nbrVal = (values[r] || [])[cc];
+                  if (nbrVal !== undefined && nbrVal !== null && String(nbrVal).length > 0) {
+                    target = { rr: r, cc, nbrVal };
+                    break;
+                  }
+                }
+              }
+              if (target) break;
+            }
+
+            if (!target) continue; // no neighbor found within limits
+
+            // Optional filter by current value content
+            if (valueSearchTerm) {
+              const hay = String(target.nbrVal);
+              if (!hay.toLowerCase().includes(String(valueSearchTerm).toLowerCase())) {
+                continue;
+              }
+            }
+
+            const actualRow = startRowIndex + (target.rr ?? r);
+            const labelCol = this.getColumnLetter(startColIndex + c);
+            const targetCol = this.getColumnLetter(startColIndex + (target.cc ?? c));
+            matches.push({
+              sheet: ws.name,
+              sheetId: ws.id,
+              cell: `${targetCol}${actualRow}`,
+              value: target.nbrVal,
+              oldValue: target.nbrVal,
+              labelText: this._normalizeLabelText(cellVal, stripColons),
+              labelAddress: `${labelCol}${startRowIndex + r}`,
+              context: `Near ${labelCol}${startRowIndex + r}`,
+            });
+          }
+        }
+      } catch (e) {
+        logger.warn("labelNeighbor scan failed for sheet", { sheet: ws.name, error: e.message });
+      }
+    }
+
+    return matches;
+  }
+
+  async performLabelNeighborUpdate(accessToken, driveId, itemId, matches, newValue, options = {}) {
+    const { highlightChanges = false } = options;
+    const graphClient = this.createGraphClient(accessToken);
+    const changes = [];
+    const errors = [];
+
+    // Build $batch requests in chunks of 20
+    const chunkSize = 20;
+    for (let i = 0; i < matches.length; i += chunkSize) {
+      const batchChunk = matches.slice(i, i + chunkSize);
+      const requests = batchChunk.map((m, idx) => ({
+        id: String(idx + 1),
+        method: "PATCH",
+        url: `/drives/${driveId}/items/${itemId}/workbook/worksheets('${m.sheet}')/range(address='${m.cell}')`,
+        headers: { "Content-Type": "application/json" },
+        body: { values: [[newValue]] },
+      }));
+      try {
+        const resp = await graphClient.api("/$batch").post({ requests });
+        // Record changes; Graph returns responses array in same order
+        const responses = resp?.responses || [];
+        responses.forEach((r, idx) => {
+          const m = batchChunk[idx];
+          if (r.status >= 200 && r.status < 300) {
+            changes.push({ sheet: m.sheet, cell: m.cell, oldValue: m.oldValue, newValue });
+          } else {
+            errors.push({ sheet: m.sheet, cell: m.cell, error: r.body?.error?.message || `HTTP ${r.status}` });
+          }
+        });
+      } catch (err) {
+        // If batch fails altogether, attempt individual updates to salvage some
+        for (const m of batchChunk) {
+          try {
+            await graphClient
+              .api(`/drives/${driveId}/items/${itemId}/workbook/worksheets('${m.sheet}')/range(address='${m.cell}')`)
+              .patch({ values: [[newValue]] });
+            changes.push({ sheet: m.sheet, cell: m.cell, oldValue: m.oldValue, newValue });
+          } catch (e) {
+            errors.push({ sheet: m.sheet, cell: m.cell, error: e.message });
+          }
+        }
+      }
+    }
+
+    // Optional highlighting (non-batched)
+    if (highlightChanges && changes.length > 0) {
+      for (const ch of changes) {
+        try {
+          await this.highlightCell(graphClient, driveId, itemId, ch.sheet, ch.cell);
+        } catch (_) {}
+      }
+    }
+
+    return {
+      changes,
+      errors,
+      summary: {
+        totalMatches: matches.length,
+        successful: changes.length,
+        failed: errors.length,
+      },
+    };
+  }
+
   createGraphClient(accessToken) {
     return Client.init({
       authProvider: (done) => done(null, accessToken),
@@ -133,7 +368,7 @@ class FindReplaceService {
         // Get the used range to determine how many columns to check
         const usedRangeResp = await graphClient
           .api(
-            `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange`
+            `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange(valuesOnly=true)`
           )
           .get();
 
@@ -291,7 +526,7 @@ class FindReplaceService {
         try {
           const usedRangeResp = await graphClient
             .api(
-              `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange`
+              `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange(valuesOnly=true)`
             )
             .get();
 
@@ -359,15 +594,20 @@ class FindReplaceService {
   }
 
   buildMatchId(sheetId, address) {
-    return `${sheetId}:${address}`;
+    // Standardized selectable match id for preview/apply
+    // Will be expanded with sheet name by generateSelectablePreview()
+    return `m:${sheetId}:${address}`;
   }
 
   generateSelectablePreview(matches, searchTerm, sheetsByName) {
     // Ensure consistent shape and include matchId; try to attach sheetId when available
     const items = matches.map((m) => {
       const sheetId = m.sheetId || (sheetsByName && sheetsByName.get(m.sheet));
+      const sheetName = m.sheet;
       const base = {
-        matchId: sheetId ? this.buildMatchId(sheetId, m.cell || m.address) : `${m.sheet}:${m.cell || m.address}`,
+        matchId: sheetId
+          ? `m:${sheetId}:${sheetName}:${m.cell || m.address}`
+          : `m:${sheetName}:${m.cell || m.address}`,
         sheet: m.sheet,
         sheetId: sheetId,
         address: m.cell || m.address,
@@ -500,7 +740,8 @@ class FindReplaceService {
             sheetMatches,
             searchTerm,
             replaceTerm,
-            highlightChanges
+            highlightChanges,
+            options
           );
 
           changes.push(...sheetChanges);
@@ -560,16 +801,35 @@ class FindReplaceService {
     matches,
     searchTerm,
     replaceTerm,
-    highlightChanges
+    highlightChanges,
+    options = {}
   ) {
     const changes = [];
 
+    const {
+      caseSensitive = false,
+      wholeWord = false,
+      replaceInside = true,
+      replaceMode = "all",
+    } = options;
+
+    // Build regex from searchTerm and knobs
+    const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    let pattern = escapeRegExp(String(searchTerm));
+    if (wholeWord) {
+      pattern = `\\b${pattern}\\b`;
+    }
+    if (!replaceInside) {
+      pattern = `^${pattern}$`;
+    }
+    let flags = caseSensitive ? "" : "i";
+    if (replaceMode === "all") flags += "g";
+    const re = new RegExp(pattern, flags);
+
     // Batch update values
     const updates = matches.map((match) => {
-      const newValue = String(match.value).replace(
-        new RegExp(searchTerm, "gi"),
-        replaceTerm
-      );
+      const strVal = match.value == null ? "" : String(match.value);
+      const newValue = strVal.replace(re, replaceTerm);
 
       return {
         cell: match.cell,

@@ -528,8 +528,9 @@
     },
     "/api/excel/find-replace": {
       "post": {
-        "summary": "Intelligent find & replace with optional preview and highlighting",
+        "summary": "Find and replace in an Excel workbook (preview → apply)",
         "operationId": "findReplace",
+        "description": "Supports two strategies: 'text' (normal text search/replace) and 'labelNeighbor' (update the value cell below or to the right of a header label). Use mode='preview' to get a selectable list of matches (returns 409), then mode='apply' with selectAll:true or selection:[matchId,...] to commit changes.",
         "requestBody": {
           "required": true,
           "content": {
@@ -542,12 +543,10 @@
         },
         "responses": {
           "200": {
-            "description": "Operation success (may include change log)",
+            "description": "Apply success",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FindReplaceSuccess"
-                }
+                "schema": { "$ref": "#/components/schemas/FindReplaceApplyResponse" }
               }
             }
           },
@@ -561,25 +560,20 @@
               }
             }
           },
+          "409": {
+            "description": "Preview requires confirmation (matches returned for selection)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FindReplacePreviewResponse" }
+              }
+            }
+          },
           "404": {
             "description": "Targets not found",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnvelopeError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Confirmation required (preview) or multiple matches requiring disambiguation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    { "$ref": "#/components/schemas/ConfirmationRequired" },
-                    { "$ref": "#/components/schemas/MultipleMatchError" }
-                  ]
                 }
               }
             }
@@ -1816,16 +1810,98 @@
           "searchTerm": { "type": "string" },
           "replaceTerm": { "type": "string" },
           "mode": { "type": "string", "enum": ["preview", "apply"] },
-          "strategy": { "type": "string", "enum": ["text", "entityName"], "default": "text" },
+          "strategy": { "type": "string", "enum": ["text", "entityName", "labelNeighbor"], "default": "text" },
           "sheetScope": { "type": "string" },
           "selection": { "type": "array", "items": { "type": "string" } },
           "selectAll": { "type": "boolean" },
           "confirm": { "type": "boolean", "default": false },
           "highlightChanges": { "type": "boolean", "default": false },
           "logChanges": { "type": "boolean", "default": true },
-          "previewId": { "type": "string" }
+          "previewId": { "type": "string" },
+          "caseSensitive": { "type": "boolean", "default": false },
+          "wholeWord": { "type": "boolean", "default": false },
+          "includeFormulas": { "type": "boolean", "default": false },
+          "replaceInside": { "type": "boolean", "default": true },
+          "replaceMode": { "type": "string", "enum": ["all", "first"], "default": "all" },
+          "label": { "oneOf": [ {"type": "string"}, {"type": "array", "items": {"type": "string"}} ] },
+          "labelMode": { "type": "string", "enum": ["exact", "regex", "fuzzy"], "default": "exact" },
+          "caseSensitiveLabel": { "type": "boolean", "default": false },
+          "stripColons": { "type": "boolean", "default": true },
+          "fuzzyThreshold": { "type": "number", "default": 0.85 },
+          "directions": { "type": "array", "items": { "type": "string", "enum": ["down", "right"] }, "default": ["down", "right"] },
+          "maxDown": { "type": "integer", "default": 3 },
+          "maxRight": { "type": "integer", "default": 3 },
+          "valueSearchTerm": { "type": "string" }
         },
         "required": ["driveName", "itemName", "searchTerm"]
+      },
+      "FindReplacePreviewResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "confirmation_required" },
+          "message": { "type": "string" },
+          "previewId": { "type": "string" },
+          "strategy": { "type": "string" },
+          "sheetScope": { "type": "string" },
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "matchId": { "type": "string", "example": "m:<sheetId>:Materiality summary.:B6" },
+                "sheet": { "type": "string" },
+                "address": { "type": "string", "example": "B6" },
+                "currentValue": { "type": ["string", "number", "boolean", "null"] },
+                "labelAddress": { "type": "string", "nullable": true },
+                "labelText": { "type": "string", "nullable": true }
+              }
+            }
+          },
+          "instructions": { "type": "string" }
+        }
+      },
+      "FindReplaceApplyResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "message": { "type": "string" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "attempted": { "type": "integer" },
+                  "successful": { "type": "integer" },
+                  "failed": { "type": "integer" }
+                }
+              },
+              "changes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": { "type": "string" },
+                    "address": { "type": "string" },
+                    "oldValue": { "type": ["string", "number", "boolean", "null"] },
+                    "newValue": { "type": ["string", "number", "boolean", "null"] }
+                  }
+                }
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": { "type": "string" },
+                    "address": { "type": "string" },
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "FindReplaceSuccess": {
         "type": "object",

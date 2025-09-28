@@ -111,7 +111,9 @@ const requestSchemas = {
     replaceTerm: Joi.string().allow("").optional(),
     // New optional workflow fields (backward compatible)
     mode: Joi.string().valid("preview", "apply").optional(),
-    strategy: Joi.string().valid("text", "entityName").default("text"),
+    strategy: Joi.string()
+      .valid("text", "entityName", "labelNeighbor")
+      .default("text"),
     sheetScope: Joi.string().optional().description("ALL or a specific sheet name"),
     selection: Joi.array().items(Joi.string()).optional(),
     selectAll: Joi.boolean().optional(),
@@ -123,7 +125,43 @@ const requestSchemas = {
     logChanges: Joi.boolean().optional(),
     confirm: Joi.boolean().optional(),
     previewId: Joi.string().optional(),
-  }),
+    // Text strategy knobs
+    caseSensitive: Joi.boolean().default(false),
+    wholeWord: Joi.boolean().default(false),
+    includeFormulas: Joi.boolean().default(false),
+    replaceInside: Joi.boolean().default(true),
+    replaceMode: Joi.string().valid("all", "first").default("all"),
+    // Label-neighbor strategy knobs
+    label: Joi.alternatives().try(Joi.string(), Joi.array().items(Joi.string())).optional(),
+    labelMode: Joi.string().valid("exact", "regex", "fuzzy").default("exact"),
+    caseSensitiveLabel: Joi.boolean().default(false),
+    stripColons: Joi.boolean().default(true),
+    fuzzyThreshold: Joi.number().min(0).max(1).default(0.85),
+    directions: Joi.array()
+      .items(Joi.string().valid("down", "right"))
+      .default(["down", "right"]),
+    maxDown: Joi.number().integer().min(0).default(3),
+    maxRight: Joi.number().integer().min(0).default(3),
+    valueSearchTerm: Joi.string().optional(),
+  })
+    .custom((value, helpers) => {
+      // Apply-mode rule: if mode='apply', require replaceTerm and either selectAll=true or non-empty selection[]
+      if (value.mode === "apply") {
+        if (value.replaceTerm === undefined) {
+          return helpers.error("any.custom", {
+            message: "replaceTerm is required when mode='apply'",
+          });
+        }
+        const hasSelection = Array.isArray(value.selection) && value.selection.length > 0;
+        if (!value.selectAll && !hasSelection) {
+          return helpers.error("any.custom", {
+            message:
+              "When mode='apply', provide selectAll=true or a non-empty selection array",
+          });
+        }
+      }
+      return value;
+    }, "apply-mode rule"),
 
   searchText: Joi.object({
     driveName: schemas.driveName.required(),
