@@ -45,7 +45,22 @@ const requestSchemas = {
   readRange: namesOnlyBase.concat(
     Joi.object({
       worksheetName: schemas.worksheetName.optional(),
+      sheetName: schemas.worksheetName.optional(),
       range: Joi.string().min(1).optional(),
+      // New optional fields (backward compatible)
+      mode: Joi.string().valid("workbook", "sheet", "range").optional(),
+      projection: Joi.string()
+        .valid("matrix", "cells", "records", "kv")
+        .optional(),
+      summary: Joi.boolean().optional(),
+      valuesOnly: Joi.boolean().optional(),
+      includeFormulas: Joi.boolean().optional(),
+      includeText: Joi.boolean().optional(),
+      includeFormats: Joi.boolean().optional(),
+      paginate: Joi.object({
+        pageSize: Joi.number().integer().min(1).max(10000).optional(),
+        pageToken: Joi.string().optional(),
+      }).optional(),
     })
   ),
 

@@ -570,7 +570,7 @@
       "post": {
         "summary": "Find and replace in an Excel workbook (preview → apply)",
         "operationId": "findReplace",
-        "description": "Supports two strategies: 'text' (normal text search/replace) and 'labelNeighbor' (update the value cell below or to the right of a header label). Use mode='preview' to get a selectable list of matches (returns 409), then mode='apply' with selectAll:true or selection:[matchId,...] to commit changes. Scanning only considers real, filled cells: trailing empty rows/columns from bloated usedRange are trimmed and A1 addresses are mapped using the true start of the returned range, preventing off-by-one and deep-empty matches.",
+        "description": "Supports 'text' and 'labelNeighbor'. Use mode='preview' (409) to get selectable matches, then mode='apply' with selectAll or selection to commit. Scans only real filled cells by trimming empty usedRange tails and computes A1 addresses from the true range start to avoid off-by-one matches.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1694,6 +1694,44 @@
           "range": {
             "type": "string",
             "description": "Optional. If omitted, the API returns the worksheet's usedRange."
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["workbook", "sheet", "range"],
+            "description": "Read mode. Default: if range provided → range; else if sheetName provided → sheet; else workbook."
+          },
+          "projection": {
+            "type": "string",
+            "enum": ["matrix", "cells", "records", "kv"],
+            "description": "Output shape. Default: matrix."
+          },
+          "summary": {
+            "type": "boolean",
+            "description": "If true, include usedRange and rows×cols summary."
+          },
+          "valuesOnly": {
+            "type": "boolean",
+            "description": "If true (default), usedRange reads trim to filled cells."
+          },
+          "includeFormulas": {
+            "type": "boolean",
+            "description": "Include formulas matrix in response when projection allows."
+          },
+          "includeText": {
+            "type": "boolean",
+            "description": "Include formatted text matrix in response when projection allows."
+          },
+          "includeFormats": {
+            "type": "boolean",
+            "description": "Reserved. When true, include basic format info."
+          },
+          "paginate": {
+            "type": "object",
+            "properties": {
+              "pageSize": { "type": "integer" },
+              "pageToken": { "type": "string" }
+            },
+            "description": "Pagination for cells/records projections."
           }
         },
         "required": [

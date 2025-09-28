@@ -106,14 +106,21 @@ class ExcelController {
     const nameParams = nameResolutionMixin.extractNameParams(req);
     nameResolutionMixin.validateNameInput(nameParams);
 
+    // Helper: normalize sheet names
+    const normalizeSheetName = (s = "") =>
+      String(s)
+        .replace(/\s+/g, " ")
+        .replace(/\.+$/, "")
+        .trim()
+        .toLowerCase();
+
+    // A1 helpers from findReplaceService
+    const findReplaceService = require("../services/findReplaceService");
+
     try {
       // Resolve names to IDs with backward compatibility
-      const resolution = await nameResolutionMixin.resolveNames(
-        req,
-        nameParams
-      );
+      const resolution = await nameResolutionMixin.resolveNames(req, nameParams);
 
-      // Handle multiple matches error
       if (!resolution.itemId) {
         throw new AppError(
           "Could not resolve file. Please check the file name and path.",
@@ -121,58 +128,292 @@ class ExcelController {
         );
       }
 
-      // Log name resolution for audit
+      // Log name resolution
       nameResolutionMixin.logNameResolution(resolution, "READ_RANGE", {
         range: req.body.range,
-        worksheetName: req.body.worksheetName,
+        worksheetName: req.body.worksheetName || req.body.sheetName,
       });
 
-      // Extract worksheet from range if provided like Sheet1!A1:D10
-      let address = req.body.range;
-      let sheetName = undefined;
-      if (typeof req.body.range === 'string' && req.body.range.length > 0) {
-        const parsed = resolverService.parseSheetAndAddress(req.body.range);
-        sheetName = parsed.sheetName;
-        address = parsed.address;
-      }
-      let resolvedWorksheetId = resolution.sheetId;
-      const effectiveWorksheetName =
-        req.body.worksheetName || sheetName || resolution.sheetName;
+      const explicitMode = req.body.mode;
+      const explicitProjection = req.body.projection;
+      const includeFormulas = req.body.includeFormulas === true;
+      const includeText = req.body.includeText === true;
+      const includeFormats = req.body.includeFormats === true; // reserved for future use
+      const valuesOnly = req.body.valuesOnly !== false; // default true
+      const summary = req.body.summary === true;
+      const paginate = req.body.paginate || {};
 
-      if (!resolvedWorksheetId && effectiveWorksheetName) {
-        resolvedWorksheetId = await resolverService.resolveWorksheetIdByName(
-          req.accessToken,
-          resolution.driveId,
-          resolution.itemId,
-          effectiveWorksheetName
-        );
+      // Extract range parts if provided like Sheet1!A1:D10
+      const rawRange = req.body.range;
+      let parsedSheetFromRange = undefined;
+      let addressFromRange = rawRange;
+      if (typeof rawRange === "string" && rawRange.length > 0) {
+        const parsed = resolverService.parseSheetAndAddress(rawRange);
+        parsedSheetFromRange = parsed.sheetName;
+        addressFromRange = parsed.address;
       }
 
-      const data = await excelService.readRange({
-        accessToken: req.accessToken,
-        driveId: resolution.driveId,
-        itemId: resolution.itemId,
-        worksheetId: resolvedWorksheetId,
-        range: address, // may be undefined to return usedRange
-        auditContext,
-      });
+      const requestedSheetName =
+        req.body.worksheetName || req.body.sheetName || parsedSheetFromRange || resolution.sheetName;
 
-      res.json({
-        status: "success",
-        data: {
-          range: data.address,
-          values: data.values,
-          formulas: data.formulas,
-          text: data.text,
-          dimensions: {
-            rows: data.rowCount,
-            columns: data.columnCount,
+      // Backward compatibility: if request has sheet + range and no mode/projection → behave as before
+      const isLegacyRange =
+        !!(requestedSheetName && rawRange && !explicitMode && !explicitProjection);
+      if (isLegacyRange) {
+        let resolvedWorksheetId = resolution.sheetId;
+        if (!resolvedWorksheetId && requestedSheetName) {
+          resolvedWorksheetId = await resolverService.resolveWorksheetIdByName(
+            req.accessToken,
+            resolution.driveId,
+            resolution.itemId,
+            requestedSheetName
+          );
+        }
+        const legacyData = await excelService.readRange({
+          accessToken: req.accessToken,
+          driveId: resolution.driveId,
+          itemId: resolution.itemId,
+          worksheetId: resolvedWorksheetId,
+          range: addressFromRange,
+          auditContext,
+        });
+        return res.json({
+          status: "success",
+          data: {
+            range: legacyData.address,
+            values: legacyData.values,
+            formulas: legacyData.formulas,
+            text: legacyData.text,
+            dimensions: {
+              rows: legacyData.rowCount,
+              columns: legacyData.columnCount,
+            },
           },
-        },
-        resolution: nameResolutionMixin.getResolutionSummary(resolution),
-      });
+          resolution: nameResolutionMixin.getResolutionSummary(resolution),
+        });
+      }
+
+      // Determine effective mode and projection
+      let mode = explicitMode;
+      if (!mode) {
+        mode = rawRange ? "range" : requestedSheetName ? "sheet" : "workbook";
+      }
+      const projection = explicitProjection || "matrix";
+
+      const graphClient = excelService.createGraphClient(req.accessToken);
+
+      // Utility: sheet map with normalization and 409 candidates if not found
+      const ensureWorksheet = async () => {
+        const { byName, byId } = await findReplaceService.getWorksheetsMap(
+          graphClient,
+          resolution.driveId,
+          resolution.itemId
+        );
+        // Build normalized lookup
+        const normToActual = new Map();
+        for (const name of byName.keys()) {
+          normToActual.set(normalizeSheetName(name), name);
+        }
+        const candidates = Array.from(byName.keys());
+        if (!requestedSheetName) {
+          return { worksheetId: null, worksheetName: candidates[0] || null, maps: { byName, byId } };
+        }
+        const actual = normToActual.get(normalizeSheetName(requestedSheetName));
+        if (!actual) {
+          // 409 with candidates array
+          return res.status(409).json({
+            status: "multiple_matches",
+            data: { candidates },
+          });
+        }
+        return { worksheetId: byName.get(actual), worksheetName: actual, maps: { byName, byId } };
+      };
+
+      // Utility: read a range from a sheet (sheet-scoped)
+      const readSheetRange = async (worksheetId, address) => {
+        // If caller passed a sheet-qualified address while we have worksheetId, strip the prefix
+        const addr = typeof address === "string" ? resolverService.parseSheetAndAddress(address).address : undefined;
+        const select = ["address", "values"]; // always need values
+        if (includeFormulas) select.push("formulas");
+        if (includeText) select.push("text");
+        const qs = select.length ? `?$select=${select.join(",")}` : "";
+        const url = addr
+          ? `/drives/${resolution.driveId}/items/${resolution.itemId}/workbook/worksheets('${worksheetId}')/range(address='${addr}')${qs}`
+          : `/drives/${resolution.driveId}/items/${resolution.itemId}/workbook/worksheets/${worksheetId}/usedRange(valuesOnly=${valuesOnly})${qs}`;
+        return await graphClient.api(url).get();
+      };
+
+      // Build projections
+      const buildMatrix = (resp) => {
+        const out = {
+          usedRange: resp.address,
+          values: resp.values || [],
+        };
+        if (includeFormulas) out.formulas = resp.formulas || [];
+        if (includeText) out.text = resp.text || [];
+        return out;
+      };
+
+      const buildCells = (resp) => {
+        const values = resp.values || [];
+        const start = findReplaceService._parseStartFromAddress(resp.address);
+        const cells = [];
+        for (let r = 0; r < values.length; r++) {
+          const row = values[r] || [];
+          for (let c = 0; c < row.length; c++) {
+            const rowA1 = (start.startRowIndex || 1) + r;
+            const colA1 = findReplaceService.getColumnLetter((start.startColIndex || 1) + c);
+            const cell = {
+              address: `${colA1}${rowA1}`,
+              value: row[c],
+            };
+            if (includeFormulas && Array.isArray(resp.formulas) && resp.formulas[r]) {
+              cell.formula = resp.formulas[r][c] ?? null;
+            } else {
+              cell.formula = null;
+            }
+            if (includeText && Array.isArray(resp.text) && resp.text[r]) {
+              cell.text = resp.text[r][c] ?? null;
+            } else {
+              cell.text = null;
+            }
+            cells.push(cell);
+          }
+        }
+        // Pagination
+        const pageSize = Math.max(1, Math.min(10000, paginate.pageSize || cells.length));
+        const offset = paginate.pageToken ? parseInt(paginate.pageToken, 10) || 0 : 0;
+        const slice = cells.slice(offset, offset + pageSize);
+        const nextOffset = offset + pageSize;
+        const hasMore = nextOffset < cells.length;
+        return { cells: slice, page: { hasMore, nextPageToken: hasMore ? String(nextOffset) : null } };
+      };
+
+      const buildRecords = (resp) => {
+        const values = (resp.values || []).slice();
+        if (!values.length) return { records: [] };
+        // Find first non-empty row as header
+        let header = [];
+        let startIdx = 0;
+        for (let i = 0; i < values.length; i++) {
+          const row = values[i] || [];
+          const any = row.some((v) => v !== null && v !== undefined && String(v).trim() !== "");
+          if (any) {
+            header = row.map((k) => String(k || "").replace(/\s+/g, " ").trim());
+            startIdx = i + 1;
+            break;
+          }
+        }
+        const records = [];
+        for (let i = startIdx; i < values.length; i++) {
+          const row = values[i] || [];
+          const obj = {};
+          for (let j = 0; j < header.length; j++) {
+            const key = header[j] || `col_${j + 1}`;
+            obj[key] = row[j];
+          }
+          records.push(obj);
+        }
+        return { records };
+      };
+
+      const buildKv = (resp) => {
+        const values = resp.values || [];
+        const start = findReplaceService._parseStartFromAddress(resp.address);
+        const kv = [];
+        for (let r = 0; r < values.length; r++) {
+          const row = values[r] || [];
+          for (let c = 0; c < row.length; c++) {
+            const v = row[c];
+            if (typeof v === "string" && v.trim().length > 0) {
+              // Prefer below, else right
+              let value = null;
+              let valR = r + 1;
+              let valC = c;
+              if (valR < values.length && (values[valR] || [])[valC] != null && String((values[valR] || [])[valC]).trim() !== "") {
+                value = (values[valR] || [])[valC];
+              } else if ((row[c + 1] != null) && String(row[c + 1]).trim() !== "") {
+                value = row[c + 1];
+                valR = r;
+                valC = c + 1;
+              }
+              if (value != null) {
+                const labelAddress = `${findReplaceService.getColumnLetter((start.startColIndex || 1) + c)}${(start.startRowIndex || 1) + r}`;
+                const valueAddress = `${findReplaceService.getColumnLetter((start.startColIndex || 1) + valC)}${(start.startRowIndex || 1) + valR}`;
+                kv.push({ label: String(v).replace(/:+\s*$/, "").trim(), labelAddress, value, valueAddress });
+              }
+            }
+          }
+        }
+        return { kv };
+      };
+
+      // Execute per mode
+      if (mode === "workbook") {
+        const { byName } = await findReplaceService.getWorksheetsMap(
+          graphClient,
+          resolution.driveId,
+          resolution.itemId
+        );
+        const sheets = [];
+        const workbookSummary = [];
+        for (const [sheetActualName, wsId] of byName.entries()) {
+          const resp = await readSheetRange(wsId, undefined);
+          const base = { sheet: sheetActualName, usedRange: resp.address };
+          if (summary) {
+            const rows = Array.isArray(resp.values) ? resp.values.length : 0;
+            const cols = rows > 0 ? Math.max(...resp.values.map((r) => (r || []).length)) : 0;
+            workbookSummary.push({ sheet: sheetActualName, usedRange: resp.address, rows, cols });
+          }
+          if (projection === "matrix") sheets.push({ sheet: sheetActualName, usedRange: resp.address, ...buildMatrix(resp) });
+          else if (projection === "cells") {
+            const c = buildCells(resp);
+            sheets.push({ sheet: sheetActualName, usedRange: resp.address, ...c });
+          } else if (projection === "records") sheets.push({ sheet: sheetActualName, usedRange: resp.address, ...buildRecords(resp) });
+          else if (projection === "kv") sheets.push({ sheet: sheetActualName, usedRange: resp.address, ...buildKv(resp) });
+        }
+        return res.json({ status: "success", data: { workbookSummary: summary ? workbookSummary : undefined, sheets } });
+      }
+
+      if (mode === "sheet") {
+        const ensured = await ensureWorksheet();
+        if (!ensured || ensured.status) return; // response already sent (409)
+        const resp = await readSheetRange(ensured.worksheetId, undefined);
+        const base = { sheet: ensured.worksheetName, usedRange: resp.address };
+        let payload;
+        if (projection === "matrix") payload = { ...base, ...buildMatrix(resp) };
+        else if (projection === "cells") payload = { ...base, ...buildCells(resp) };
+        else if (projection === "records") payload = { ...base, ...buildRecords(resp) };
+        else if (projection === "kv") payload = { ...base, ...buildKv(resp) };
+        if (summary) {
+          const rows = Array.isArray(resp.values) ? resp.values.length : 0;
+          const cols = rows > 0 ? Math.max(...resp.values.map((r) => (r || []).length)) : 0;
+          payload.rows = rows;
+          payload.cols = cols;
+        }
+        return res.json({ status: "success", data: payload });
+      }
+
+      // mode === 'range'
+      {
+        const ensured = await ensureWorksheet();
+        if (!ensured || ensured.status) return; // 409 already sent
+        const resp = await readSheetRange(ensured.worksheetId, addressFromRange);
+        const base = { sheet: ensured.worksheetName, usedRange: resp.address };
+        let payload;
+        if (projection === "matrix") payload = { ...base, ...buildMatrix(resp) };
+        else if (projection === "cells") payload = { ...base, ...buildCells(resp) };
+        else if (projection === "records") payload = { ...base, ...buildRecords(resp) };
+        else if (projection === "kv") payload = { ...base, ...buildKv(resp) };
+        if (summary) {
+          const rows = Array.isArray(resp.values) ? resp.values.length : 0;
+          const cols = rows > 0 ? Math.max(...resp.values.map((r) => (r || []).length)) : 0;
+          payload.rows = rows;
+          payload.cols = cols;
+        }
+        return res.json({ status: "success", data: payload });
+      }
     } catch (err) {
-      // Handle multiple matches with user-friendly response
       if (err.isMultipleMatches) {
         return nameResolutionMixin.handleMultipleMatches(res, err, "file");
       }
