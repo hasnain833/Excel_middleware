@@ -38,7 +38,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ClearDataRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/ClearDataRequest"
+              }
             }
           }
         },
@@ -47,7 +49,9 @@
             "description": "Clear success",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ClearDataSuccess" }
+                "schema": {
+                  "$ref": "#/components/schemas/ClearDataSuccess"
+                }
               }
             }
           },
@@ -55,7 +59,9 @@
             "description": "Not found",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/EnvelopeError" }
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
               }
             }
           },
@@ -63,7 +69,9 @@
             "description": "Server error",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/EnvelopeError" }
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeError"
+                }
               }
             }
           }
@@ -437,7 +445,7 @@
     },
     "/api/excel/search": {
       "get": {
-        "summary": "Recursive search for files by name",
+        "summary": "Recursive search for files by name (single drive or all drives)",
         "operationId": "searchFiles",
         "parameters": [
           {
@@ -489,7 +497,39 @@
             "schema": {
               "type": "string"
             },
+            "required": true,
             "description": "Target file name (case-insensitive)."
+          },
+          {
+            "in": "query",
+            "name": "matchMode",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "exact",
+                "contains"
+              ]
+            },
+            "required": false,
+            "description": "Filename match mode. Default: if fileName contains a dot → exact; else contains."
+          },
+          {
+            "in": "query",
+            "name": "excelOnly",
+            "schema": {
+              "type": "boolean"
+            },
+            "required": false,
+            "description": "If true, only return .xlsx files."
+          },
+          {
+            "in": "query",
+            "name": "pathsOnly",
+            "schema": {
+              "type": "boolean"
+            },
+            "required": false,
+            "description": "If true, return only an array of normalized paths instead of full match objects."
           }
         ],
         "responses": {
@@ -530,7 +570,7 @@
       "post": {
         "summary": "Find and replace in an Excel workbook (preview → apply)",
         "operationId": "findReplace",
-        "description": "Supports two strategies: 'text' (normal text search/replace) and 'labelNeighbor' (update the value cell below or to the right of a header label). Use mode='preview' to get a selectable list of matches (returns 409), then mode='apply' with selectAll:true or selection:[matchId,...] to commit changes.",
+        "description": "Supports two strategies: 'text' (normal text search/replace) and 'labelNeighbor' (update the value cell below or to the right of a header label). Use mode='preview' to get a selectable list of matches (returns 409), then mode='apply' with selectAll:true or selection:[matchId,...] to commit changes. Scanning only considers real, filled cells: trailing empty rows/columns from bloated usedRange are trimmed and A1 addresses are mapped using the true start of the returned range, preventing off-by-one and deep-empty matches.",
         "requestBody": {
           "required": true,
           "content": {
@@ -546,7 +586,9 @@
             "description": "Apply success",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FindReplaceApplyResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/FindReplaceApplyResponse"
+                }
               }
             }
           },
@@ -564,7 +606,9 @@
             "description": "Preview requires confirmation (matches returned for selection)",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FindReplacePreviewResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/FindReplacePreviewResponse"
+                }
               }
             }
           },
@@ -595,6 +639,7 @@
       "post": {
         "summary": "Search text without replacement",
         "operationId": "searchText",
+        "description": "Search respects real, filled cells only: trailing empty rows/columns from bloated usedRange are trimmed and A1 addresses are computed from the true range start to avoid off-by-one and deep-empty matches.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1417,11 +1462,22 @@
             "items": {
               "type": "object",
               "properties": {
-                "id": { "type": "string" },
-                "name": { "type": "string" },
-                "driveId": { "type": "string" },
-                "driveName": { "type": "string" },
-                "fullPath": { "type": "string", "example": "/Reports/2024/3.1- Materiality.xlsx" }
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "driveId": {
+                  "type": "string"
+                },
+                "driveName": {
+                  "type": "string"
+                },
+                "fullPath": {
+                  "type": "string",
+                  "example": "/Reports/2024/3.1- Materiality.xlsx"
+                }
               },
               "additionalProperties": true
             }
@@ -1467,82 +1523,145 @@
             }
           }
         },
+        "SearchFilesSuccess": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "success"
+              ],
+              "example": "success"
+            },
+            "data": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "Normalized full path like /folder1/folder2/file.xlsx"
+                  }
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "matches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "parentId": {
+                            "type": "string"
+                          },
+                          "driveId": {
+                            "type": "string"
+                          },
+                          "driveName": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "path"
+                        ]
+                      }
+                    },
+                    "totalMatches": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "fileName",
+                    "matches",
+                    "totalMatches"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "status",
+            "data"
+          ]
+        },
         "required": [
           "status",
           "data"
         ]
       },
-      "SearchFilesSuccess": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "success"
-            ],
-            "example": "success"
-          },
-          "matches": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "path": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "name",
-                "path"
-              ]
-            }
-          }
-        },
-        "required": [
-          "status",
-          "matches"
-        ]
-      },
       "RangeObject": {
         "type": "object",
-        "additionalProperties": true,
+        "description": "Generic Excel range payload. Structure may include address, values (2D), and metadata.",
         "properties": {
-          "address": {
-            "type": "string"
-          },
+          "address": { "type": "string", "example": "Sheet1!A1:B2" },
           "values": {
             "type": "array",
-            "items": {
-              "type": "array",
-              "items": {}
-            }
+            "items": { "type": "array", "items": {} },
+            "description": "2D array of cell values"
           }
-        }
+        },
+        "additionalProperties": true
       },
       "MessageValues": {
         "type": "object",
+        "description": "Message with associated values payload.",
         "properties": {
-          "message": {
-            "type": "string"
-          },
-          "values": {
-            "type": "array",
-            "items": {
-              "type": "array",
-              "items": {}
-            }
+          "message": { "type": "string" },
+          "values": { "type": "array", "items": {} }
+        },
+        "additionalProperties": true
+      },
+      "SearchFilesSuccess": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"], "example": "success" },
+          "data": {
+            "oneOf": [
+              { "type": "array", "items": { "type": "string", "description": "Normalized full path like /folder1/folder2/file.xlsx" } },
+              {
+                "type": "object",
+                "properties": {
+                  "fileName": { "type": "string" },
+                  "scope": { "type": "object", "additionalProperties": true },
+                  "matches": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string" },
+                        "name": { "type": "string" },
+                        "path": { "type": "string" },
+                        "parentId": { "type": "string" },
+                        "driveId": { "type": "string" },
+                        "driveName": { "type": "string" }
+                      },
+                      "required": ["name", "path"]
+                    }
+                  },
+                  "totalMatches": { "type": "integer" }
+                },
+                "required": ["fileName", "matches", "totalMatches"]
+              }
+            ]
           }
         },
-        "required": [
-          "message",
-          "values"
-        ]
+        "required": ["status", "data"]
       },
       "ReadRequest": {
         "type": "object",
@@ -1656,46 +1775,94 @@
       "WriteSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
           "data": {
             "type": "object",
             "properties": {
-              "worksheetId": { "type": "string" },
-              "range": { "type": "string" },
-              "valuesWritten": { "type": "integer", "description": "Number of cells written" }
+              "worksheetId": {
+                "type": "string"
+              },
+              "range": {
+                "type": "string"
+              },
+              "valuesWritten": {
+                "type": "integer",
+                "description": "Number of cells written"
+              }
             },
             "additionalProperties": true
           }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "ClearDataRequest": {
         "type": "object",
         "properties": {
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "worksheetName": { "type": "string" },
-          "sheetName": { "type": "string" },
-          "range": { "type": "string", "description": "Optional. If omitted, clears usedRange of the worksheet." }
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "worksheetName": {
+            "type": "string"
+          },
+          "sheetName": {
+            "type": "string"
+          },
+          "range": {
+            "type": "string",
+            "description": "Optional. If omitted, clears usedRange of the worksheet."
+          }
         },
-        "required": ["driveName", "itemName"]
+        "required": [
+          "driveName",
+          "itemName"
+        ]
       },
       "ClearDataSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success"], "example": "success" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success"
+            ],
+            "example": "success"
+          },
           "data": {
             "type": "object",
             "properties": {
-              "cleared": { "type": "boolean" },
-              "worksheetId": { "type": "string" },
-              "range": { "type": "string" }
+              "cleared": {
+                "type": "boolean"
+              },
+              "worksheetId": {
+                "type": "string"
+              },
+              "range": {
+                "type": "string"
+              }
             },
-            "required": ["cleared"]
+            "required": [
+              "cleared"
+            ]
           }
         },
-        "required": ["status", "data"]
+        "required": [
+          "status",
+          "data"
+        ]
       },
       "BatchRequest": {
         "type": "object",
@@ -1793,87 +1960,266 @@
       "FindReplaceRequest": {
         "type": "object",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
           "scope": {
             "type": "string",
-            "enum": ["header_only", "specific_range", "entire_sheet", "all_sheets"],
+            "enum": [
+              "header_only",
+              "specific_range",
+              "entire_sheet",
+              "all_sheets"
+            ],
             "default": "entire_sheet"
           },
-          "sheetName": { "type": "string" },
-          "rangeSpec": { "type": "string" },
-          "searchTerm": { "type": "string" },
-          "replaceTerm": { "type": "string" },
-          "mode": { "type": "string", "enum": ["preview", "apply"] },
-          "strategy": { "type": "string", "enum": ["text", "entityName", "labelNeighbor"], "default": "text" },
-          "sheetScope": { "type": "string" },
-          "selection": { "type": "array", "items": { "type": "string" } },
-          "selectAll": { "type": "boolean" },
-          "confirm": { "type": "boolean", "default": false },
-          "highlightChanges": { "type": "boolean", "default": false },
-          "logChanges": { "type": "boolean", "default": true },
-          "previewId": { "type": "string" },
-          "caseSensitive": { "type": "boolean", "default": false },
-          "wholeWord": { "type": "boolean", "default": false },
-          "includeFormulas": { "type": "boolean", "default": false },
-          "replaceInside": { "type": "boolean", "default": true },
-          "replaceMode": { "type": "string", "enum": ["all", "first"], "default": "all" },
-          "label": { "oneOf": [ {"type": "string"}, {"type": "array", "items": {"type": "string"}} ] },
-          "labelMode": { "type": "string", "enum": ["exact", "regex", "fuzzy"], "default": "exact" },
-          "caseSensitiveLabel": { "type": "boolean", "default": false },
-          "stripColons": { "type": "boolean", "default": true },
-          "fuzzyThreshold": { "type": "number", "default": 0.85 },
-          "directions": { "type": "array", "items": { "type": "string", "enum": ["down", "right"] }, "default": ["down", "right"] },
-          "maxDown": { "type": "integer", "default": 3 },
-          "maxRight": { "type": "integer", "default": 3 },
-          "valueSearchTerm": { "type": "string" }
+          "sheetName": {
+            "type": "string"
+          },
+          "rangeSpec": {
+            "type": "string"
+          },
+          "searchTerm": {
+            "type": "string"
+          },
+          "replaceTerm": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "apply"
+            ]
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "text",
+              "entityName",
+              "labelNeighbor"
+            ],
+            "default": "text"
+          },
+          "sheetScope": {
+            "type": "string"
+          },
+          "selection": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "selectAll": {
+            "type": "boolean"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false
+          },
+          "highlightChanges": {
+            "type": "boolean",
+            "default": false
+          },
+          "logChanges": {
+            "type": "boolean",
+            "default": true
+          },
+          "previewId": {
+            "type": "string"
+          },
+          "caseSensitive": {
+            "type": "boolean",
+            "default": false
+          },
+          "wholeWord": {
+            "type": "boolean",
+            "default": false
+          },
+          "includeFormulas": {
+            "type": "boolean",
+            "default": false
+          },
+          "replaceInside": {
+            "type": "boolean",
+            "default": true
+          },
+          "replaceMode": {
+            "type": "string",
+            "enum": [
+              "all",
+              "first"
+            ],
+            "default": "all"
+          },
+          "label": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "labelMode": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "regex",
+              "fuzzy"
+            ],
+            "default": "exact"
+          },
+          "caseSensitiveLabel": {
+            "type": "boolean",
+            "default": false
+          },
+          "stripColons": {
+            "type": "boolean",
+            "default": true
+          },
+          "fuzzyThreshold": {
+            "type": "number",
+            "default": 0.85
+          },
+          "directions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "down",
+                "right"
+              ]
+            },
+            "default": [
+              "down",
+              "right"
+            ]
+          },
+          "maxDown": {
+            "type": "integer",
+            "default": 3
+          },
+          "maxRight": {
+            "type": "integer",
+            "default": 3
+          },
+          "valueSearchTerm": {
+            "type": "string"
+          }
         },
-        "required": ["driveName", "itemName", "searchTerm"]
+        "required": [
+          "driveName",
+          "itemName",
+          "searchTerm"
+        ]
       },
       "FindReplacePreviewResponse": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "example": "confirmation_required" },
-          "message": { "type": "string" },
-          "previewId": { "type": "string" },
-          "strategy": { "type": "string" },
-          "sheetScope": { "type": "string" },
+          "status": {
+            "type": "string",
+            "example": "confirmation_required"
+          },
+          "message": {
+            "type": "string"
+          },
+          "previewId": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "sheetScope": {
+            "type": "string"
+          },
           "matches": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "matchId": { "type": "string", "example": "m:<sheetId>:Materiality summary.:B6" },
-                "sheet": { "type": "string" },
-                "address": { "type": "string", "example": "B6" },
-                "currentValue": { "type": ["string", "number", "boolean", "null"] },
-                "labelAddress": { "type": "string", "nullable": true },
-                "labelText": { "type": "string", "nullable": true }
+                "matchId": {
+                  "type": "string",
+                  "example": "m:<sheetId>:Materiality summary.:B6"
+                },
+                "sheet": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string",
+                  "example": "B6"
+                },
+                "currentValue": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "labelAddress": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "labelText": {
+                  "type": "string",
+                  "nullable": true
+                }
               }
             }
           },
-          "instructions": { "type": "string" }
+          "instructions": {
+            "type": "string"
+          }
         }
       },
       "FindReplaceApplyResponse": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "example": "success" },
-          "message": { "type": "string" },
+          "status": {
+            "type": "string",
+            "example": "success"
+          },
+          "message": {
+            "type": "string"
+          },
           "data": {
             "type": "object",
             "properties": {
               "summary": {
                 "type": "object",
                 "properties": {
-                  "attempted": { "type": "integer" },
-                  "successful": { "type": "integer" },
-                  "failed": { "type": "integer" }
+                  "attempted": {
+                    "type": "integer"
+                  },
+                  "successful": {
+                    "type": "integer"
+                  },
+                  "failed": {
+                    "type": "integer"
+                  }
                 }
               },
               "changes": {
@@ -1881,10 +2227,28 @@
                 "items": {
                   "type": "object",
                   "properties": {
-                    "sheet": { "type": "string" },
-                    "address": { "type": "string" },
-                    "oldValue": { "type": ["string", "number", "boolean", "null"] },
-                    "newValue": { "type": ["string", "number", "boolean", "null"] }
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "address": {
+                      "type": "string"
+                    },
+                    "oldValue": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "newValue": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    }
                   }
                 }
               },
@@ -1893,9 +2257,15 @@
                 "items": {
                   "type": "object",
                   "properties": {
-                    "sheet": { "type": "string" },
-                    "address": { "type": "string" },
-                    "error": { "type": "string" }
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "address": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -1906,56 +2276,154 @@
       "FindReplaceSuccess": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["success", "preview", "no_matches", "partial_success"], "example": "success" },
-          "changes": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
-          "summary": { "type": "object", "additionalProperties": true }
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "preview",
+              "no_matches",
+              "partial_success"
+            ],
+            "example": "success"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": true
+          }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "SearchTextRequest": {
         "type": "object",
         "properties": {
-          "siteId": { "type": "string" },
-          "siteUrl": { "type": "string" },
-          "sharepointHostname": { "type": "string" },
-          "sharepointSiteName": { "type": "string" },
-          "driveName": { "type": "string" },
-          "itemName": { "type": "string" },
-          "itemPath": { "type": "string" },
-          "scope": { "type": "string", "enum": ["header_only", "specific_range", "entire_sheet", "all_sheets"], "default": "entire_sheet" },
-          "sheetName": { "type": "string" },
-          "rangeSpec": { "type": "string" },
-          "searchTerm": { "type": "string" }
+          "siteId": {
+            "type": "string"
+          },
+          "siteUrl": {
+            "type": "string"
+          },
+          "sharepointHostname": {
+            "type": "string"
+          },
+          "sharepointSiteName": {
+            "type": "string"
+          },
+          "driveName": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "itemPath": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "header_only",
+              "specific_range",
+              "entire_sheet",
+              "all_sheets"
+            ],
+            "default": "entire_sheet"
+          },
+          "sheetName": {
+            "type": "string"
+          },
+          "rangeSpec": {
+            "type": "string"
+          },
+          "searchTerm": {
+            "type": "string"
+          }
         },
-        "required": ["itemName", "searchTerm"]
+        "required": [
+          "itemName",
+          "searchTerm"
+        ]
       },
       "ConfirmationRequired": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["confirmation_required"], "example": "confirmation_required" },
-          "message": { "type": "string" },
-          "previewId": { "type": "string" },
-          "strategy": { "type": "string", "enum": ["text", "entityName"] },
-          "sheetScope": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmation_required"
+            ],
+            "example": "confirmation_required"
+          },
+          "message": {
+            "type": "string"
+          },
+          "previewId": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "text",
+              "entityName"
+            ]
+          },
+          "sheetScope": {
+            "type": "string"
+          },
           "matches": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "matchId": { "type": "string" },
-                "sheet": { "type": "string" },
-                "sheetId": { "type": "string" },
-                "address": { "type": "string" },
-                "currentValue": { "type": ["string", "number", "boolean", "null"] },
-                "labelText": { "type": "string" },
-                "labelAddress": { "type": "string" },
-                "context": { "type": "string" }
+                "matchId": {
+                  "type": "string"
+                },
+                "sheet": {
+                  "type": "string"
+                },
+                "sheetId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                },
+                "currentValue": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "labelText": {
+                  "type": "string"
+                },
+                "labelAddress": {
+                  "type": "string"
+                },
+                "context": {
+                  "type": "string"
+                }
               },
-              "required": ["matchId", "sheet", "address"]
+              "required": [
+                "matchId",
+                "sheet",
+                "address"
+              ]
             }
           }
         },
-        "required": ["status", "matches"]
+        "required": [
+          "status",
+          "matches"
+        ]
       },
       "SearchTextSuccess": {
         "type": "object",
@@ -2024,8 +2492,16 @@
           "newName"
         ],
         "anyOf": [
-          { "required": ["itemName"] },
-          { "required": ["selectedItemId"] }
+          {
+            "required": [
+              "itemName"
+            ]
+          },
+          {
+            "required": [
+              "selectedItemId"
+            ]
+          }
         ]
       },
       "RenameFolderRequest": {
@@ -2152,61 +2628,123 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["success"],
+            "enum": [
+              "success"
+            ],
             "example": "success"
           },
           "data": {
             "type": "object",
             "properties": {
-              "file": { "type": "object", "additionalProperties": true },
-              "message": { "type": "string", "example": "Renamed: Drive/Folder/Old -> Drive/Folder/New" },
-              "pathBefore": { "type": "string" },
-              "pathAfter": { "type": "string" }
+              "file": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "message": {
+                "type": "string",
+                "example": "Renamed: Drive/Folder/Old -> Drive/Folder/New"
+              },
+              "pathBefore": {
+                "type": "string"
+              },
+              "pathAfter": {
+                "type": "string"
+              }
             },
-            "required": ["message"]
+            "required": [
+              "message"
+            ]
           }
         },
-        "required": ["status", "data"]
+        "required": [
+          "status",
+          "data"
+        ]
       },
-
       "MultipleMatchesResponse": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["multiple_matches"], "example": "multiple_matches" },
-          "message": { "type": "string", "example": "Multiple files found with that name. Please pick one." },
+          "status": {
+            "type": "string",
+            "enum": [
+              "multiple_matches"
+            ],
+            "example": "multiple_matches"
+          },
+          "message": {
+            "type": "string",
+            "example": "Multiple files found with that name. Please pick one."
+          },
           "matches": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "id": { "type": "string" },
-                "name": { "type": "string" },
-                "driveName": { "type": "string" },
-                "breadcrumb": { "type": "string" },
-                "fullPath": { "type": "string" },
-                "path": { "type": "string" },
-                "parentId": { "type": "string" },
-                "webUrl": { "type": "string" },
-                "lastModified": { "type": "string", "format": "date-time" },
-                "size": { "type": "integer" }
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "driveName": {
+                  "type": "string"
+                },
+                "breadcrumb": {
+                  "type": "string"
+                },
+                "fullPath": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "parentId": {
+                  "type": "string"
+                },
+                "webUrl": {
+                  "type": "string"
+                },
+                "lastModified": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "size": {
+                  "type": "integer"
+                }
               },
-              "required": ["id", "name", "driveName", "fullPath", "path"]
+              "required": [
+                "id",
+                "name",
+                "driveName",
+                "fullPath",
+                "path"
+              ]
             }
           }
         },
-        "required": ["status", "message", "matches"]
+        "required": [
+          "status",
+          "message",
+          "matches"
+        ]
       },
       "RenameSuccess": {
         "type": "object",
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["success"],
+            "enum": [
+              "success"
+            ],
             "example": "success"
           },
-          "message": { "type": "string" }
+          "message": {
+            "type": "string"
+          }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "BatchRenameSuccess": {
         "type": "object",

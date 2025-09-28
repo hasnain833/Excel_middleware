@@ -11,6 +11,52 @@ class FindReplaceService {
     this.ttlMs = 2 * 60 * 1000; // 2 minutes TTL for search results
   }
 
+  // Determine if a cell value should be treated as filled (non-empty)
+  _isFilled(val) {
+    if (val === null || val === undefined) return false;
+    if (typeof val === "number" || typeof val === "boolean") return true;
+    const s = String(val);
+    return s.trim().length > 0;
+  }
+
+  // Trim trailing empty rows and columns from a 2D values matrix
+  _trimValuesMatrix(values) {
+    if (!Array.isArray(values) || values.length === 0) return [];
+    let lastRow = -1;
+    let lastCol = -1;
+    for (let r = 0; r < values.length; r++) {
+      const row = values[r] || [];
+      for (let c = 0; c < row.length; c++) {
+        if (this._isFilled(row[c])) {
+          if (r > lastRow) lastRow = r;
+          if (c > lastCol) lastCol = c;
+        }
+      }
+    }
+    if (lastRow === -1 || lastCol === -1) return []; // no data
+    const trimmed = [];
+    for (let r = 0; r <= lastRow; r++) {
+      const row = values[r] || [];
+      trimmed.push(row.slice(0, lastCol + 1));
+    }
+    return trimmed;
+  }
+
+  // Robustly parse the starting cell (column letter and row number) from a range address
+  // Examples: "Sheet1!A2:D10" => A2, "A1:D20" => A1, "Sheet With Space!B3:B50" => B3
+  _parseStartFromAddress(address) {
+    if (!address || typeof address !== "string") return { startColIndex: 1, startRowIndex: 1 };
+    let part = address;
+    const bang = address.lastIndexOf("!");
+    if (bang !== -1) part = address.slice(bang + 1);
+    const first = part.split(":")[0];
+    const m = first.match(/([A-Z]+)(\d+)/i);
+    if (!m) return { startColIndex: 1, startRowIndex: 1 };
+    const colLetters = m[1].toUpperCase();
+    const rowNum = parseInt(m[2], 10) || 1;
+    return { startColIndex: this.getColumnIndex(colLetters), startRowIndex: rowNum };
+  }
+
   // New: Generic label matcher utility
   _normalizeLabelText(s, stripColons = true) {
     if (s == null) return "";
@@ -491,7 +537,7 @@ class FindReplaceService {
       for (const worksheet of worksheets) {
         const usedRangeResp = await graphClient
           .api(
-            `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange`
+            `/drives/${driveId}/items/${itemId}/workbook/worksheets/${worksheet.id}/usedRange(valuesOnly=true)`
           )
           .get();
 
@@ -552,29 +598,33 @@ class FindReplaceService {
   }
 
   extractMatchesFromRange(rangeResp, searchTerm, sheetName, matches) {
-    if (!rangeResp.values) return;
+    if (!rangeResp || !Array.isArray(rangeResp.values)) return;
 
-    const startRow = rangeResp.address.match(/:([A-Z]+)(\d+)/)?.[2] || 1;
-    const startCol = rangeResp.address.match(/([A-Z]+)(\d+)/)?.[1] || "A";
-    const startColIndex = this.getColumnIndex(startCol);
-    const startRowIndex = parseInt(startRow);
+    // Fix off-by-one by parsing the true starting cell from the address
+    const { startColIndex, startRowIndex } = this._parseStartFromAddress(
+      rangeResp.address
+    );
 
-    rangeResp.values.forEach((row, rowIndex) => {
+    // Trim trailing empty rows/cols to avoid scanning far below/aside real data
+    const trimmed = this._trimValuesMatrix(rangeResp.values);
+    if (trimmed.length === 0) return;
+
+    const needle = String(searchTerm).toLowerCase();
+    trimmed.forEach((row, rowIndex) => {
       row.forEach((cellValue, colIndex) => {
-        if (
-          cellValue &&
-          String(cellValue).toLowerCase().includes(searchTerm.toLowerCase())
-        ) {
-          const actualRow = startRowIndex + rowIndex;
-          const actualCol = this.getColumnLetter(startColIndex + colIndex);
-
-          matches.push({
-            sheet: sheetName,
-            cell: `${actualCol}${actualRow}`,
-            value: cellValue,
-            oldValue: cellValue,
-            isHeader: actualRow === 1,
-          });
+        if (this._isFilled(cellValue)) {
+          const hay = String(cellValue).toLowerCase();
+          if (hay.includes(needle)) {
+            const actualRow = startRowIndex + rowIndex;
+            const actualCol = this.getColumnLetter(startColIndex + colIndex);
+            matches.push({
+              sheet: sheetName,
+              cell: `${actualCol}${actualRow}`,
+              value: cellValue,
+              oldValue: cellValue,
+              isHeader: actualRow === 1,
+            });
+          }
         }
       });
     });
