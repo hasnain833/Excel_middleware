@@ -1024,22 +1024,34 @@ class ExcelController {
           },
         });
       }
+      if (err.statusCode === 403) {
+        return res.status(403).json({
+          status: "error",
+          error: { code: 403, message: "Insufficient permissions to delete this file." },
+        });
+      }
+      if (err.statusCode === 404) {
+        return res.status(404).json({
+          status: "error",
+          error: { code: 404, message: "File not found (it may have been moved or already deleted)." },
+        });
+      }
       throw err;
     }
   });
 
 
   deleteSheet = catchAsync(async (req, res) => {
-    const { driveId, driveName, itemId, itemName, itemPath, sheetName } =
-      req.body;
+    const { driveId, driveName, itemId, itemName, itemPath, sheetName } = req.body;
     const auditContext = auditService.createAuditContext(req);
 
+    // Local normalizer (no shared module)
+    const normalize = (s) => (s || "").replace(/\.+$/, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+    // Resolve drive and item (prefer IDs when provided)
     let resolvedDriveId = driveId;
     if (!resolvedDriveId && driveName) {
-      resolvedDriveId = await resolverService.resolveDriveIdByName(
-        req.accessToken,
-        driveName
-      );
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
     }
 
     let resolvedItemId = itemId;
@@ -1070,53 +1082,72 @@ class ExcelController {
 
     const graphClient = excelService.createGraphClient(req.accessToken);
 
-    // Guard: last sheet should not be deleted
-    const wsResp = await graphClient
-      .api(
-        `/drives/${resolvedDriveId}/items/${resolvedItemId}/workbook/worksheets`
-      )
-      .get();
-    const totalSheets = (wsResp.value || []).length;
-    if (totalSheets <= 1) {
-      return res.status(400).json({
-        status: "error",
-        error: {
-          code: 400,
-          message: "Cannot delete the last remaining worksheet in a workbook.",
-        },
+    try {
+      // List worksheets and guard on last-sheet
+      const wsResp = await graphClient
+        .api(`/drives/${resolvedDriveId}/items/${resolvedItemId}/workbook/worksheets`)
+        .get();
+      const sheets = wsResp.value || [];
+      if (sheets.length <= 1) {
+        return res.status(400).json({
+          status: "error",
+          error: { code: 400, message: "Cannot delete the last remaining worksheet in a workbook." },
+        });
+      }
+
+      // Normalize and find target
+      const byName = new Map();
+      for (const s of sheets) byName.set(s.name, s.id);
+      const normMap = new Map(Array.from(byName.keys()).map((n) => [normalize(n), n]));
+      const targetActual = normMap.get(normalize(sheetName));
+      if (!targetActual) {
+        return res.status(409).json({ status: "multiple_matches", data: { candidates: Array.from(byName.keys()) } });
+      }
+      const targetWorksheetId = byName.get(targetActual);
+
+      // Create workbook session (persistChanges: true)
+      const sess = await graphClient
+        .api(`/drives/${resolvedDriveId}/items/${resolvedItemId}/workbook/createSession`)
+        .post({ persistChanges: true });
+      const sessionId = sess && (sess.id || sess.sessionId || sess["id"]);
+
+      // Delete via POST .../delete with session header
+      await graphClient
+        .api(`/drives/${resolvedDriveId}/items/${resolvedItemId}/workbook/worksheets('${targetWorksheetId}')/delete`)
+        .header("workbook-session-id", sessionId)
+        .post({});
+
+      // Best-effort close session
+      try {
+        await graphClient
+          .api(`/drives/${resolvedDriveId}/items/${resolvedItemId}/workbook/closeSession`)
+          .header("workbook-session-id", sessionId)
+          .post({});
+      } catch (e) {
+        logger.warn("closeSession failed", { error: e.message });
+      }
+
+      auditService.logSystemEvent({
+        event: "SHEET_DELETED",
+        details: { driveId: resolvedDriveId, itemId: resolvedItemId, sheetName: targetActual, requestedBy: auditContext.user },
       });
+
+      return res.status(200).json({
+        status: "success",
+        data: { deleted: true, sheetName: targetActual, file: { itemId: resolvedItemId, name: itemName || undefined } },
+      });
+    } catch (err) {
+      if (err.statusCode === 403) {
+        return res.status(403).json({ status: "error", error: { code: 403, message: "Insufficient permissions to delete this worksheet." } });
+      }
+      if (err.statusCode === 404) {
+        return res.status(404).json({ status: "error", error: { code: 404, message: "Worksheet not found." } });
+      }
+      if (err.statusCode === 409 || err.statusCode === 422 || /session/i.test(err.message || "")) {
+        return res.status(409).json({ status: "error", error: { code: 409, message: "Workbook session required. Please retry." } });
+      }
+      throw err;
     }
-
-    const worksheetId = await resolverService.resolveWorksheetIdByName(
-      req.accessToken,
-      resolvedDriveId,
-      resolvedItemId,
-      sheetName
-    );
-    await graphClient
-      .api(
-        `/drives/${resolvedDriveId}/items/${resolvedItemId}/workbook/worksheets/${worksheetId}`
-      )
-      .delete();
-
-    auditService.logSystemEvent({
-      event: "SHEET_DELETED",
-      details: {
-        driveId: resolvedDriveId,
-        itemId: resolvedItemId,
-        sheetName,
-        requestedBy: auditContext.user,
-      },
-    });
-
-    return res.status(200).json({
-      status: "success",
-      data: {
-        deleted: true,
-        sheetName,
-        file: { itemId: resolvedItemId, name: itemName || undefined },
-      },
-    });
   });
 }
 

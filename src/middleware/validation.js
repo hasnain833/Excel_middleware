@@ -101,19 +101,34 @@ const requestSchemas = {
     position: schemas.position,
   }),
 
-  deleteFile: Joi.object({
-    driveName: schemas.driveName.required(),
-    itemName: schemas.itemName.required(),
-    itemPath: schemas.itemPath.optional(),
-    force: schemas.force,
-  }),
+  // DELETE works with either query or body; accept ID or name+path
+  deleteFile: Joi.alternatives().try(
+    Joi.object({
+      driveName: schemas.driveName.required(),
+      itemId: Joi.string().min(5).required(),
+      force: schemas.force,
+    }),
+    Joi.object({
+      driveName: schemas.driveName.required(),
+      itemName: schemas.itemName.required(),
+      itemPath: schemas.itemPath.optional(),
+      force: schemas.force,
+    })
+  ),
 
-  deleteSheet: Joi.object({
-    driveName: schemas.driveName.required(),
-    itemName: schemas.itemName.required(),
-    itemPath: schemas.itemPath.optional(),
-    sheetName: schemas.worksheetName.required(),
-  }),
+  deleteSheet: Joi.alternatives().try(
+    Joi.object({
+      driveName: schemas.driveName.required(),
+      itemId: Joi.string().min(5).required(),
+      sheetName: schemas.worksheetName.required(),
+    }),
+    Joi.object({
+      driveName: schemas.driveName.required(),
+      itemName: schemas.itemName.required(),
+      itemPath: schemas.itemPath.optional(),
+      sheetName: schemas.worksheetName.required(),
+    })
+  ),
 
   analyzeScope: Joi.object({
     driveName: schemas.driveName.required(),

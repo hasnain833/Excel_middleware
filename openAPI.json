@@ -2863,45 +2863,48 @@
       },
       "DeleteFileRequest": {
         "type": "object",
-        "properties": {
-          "driveName": {
-            "type": "string"
+        "properties": {},
+        "oneOf": [
+          {
+            "properties": {
+              "driveName": { "type": "string" },
+              "itemId": { "type": "string" },
+              "force": { "type": "boolean" }
+            },
+            "required": ["driveName", "itemId"]
           },
-          "itemName": {
-            "type": "string"
-          },
-          "itemPath": {
-            "type": "string"
-          },
-          "force": {
-            "type": "boolean"
+          {
+            "properties": {
+              "driveName": { "type": "string" },
+              "itemName": { "type": "string" },
+              "itemPath": { "type": "string" },
+              "force": { "type": "boolean" }
+            },
+            "required": ["driveName", "itemName"]
           }
-        },
-        "required": [
-          "driveName",
-          "itemName"
         ]
       },
       "DeleteSheetRequest": {
         "type": "object",
-        "properties": {
-          "driveName": {
-            "type": "string"
+        "properties": {},
+        "oneOf": [
+          {
+            "properties": {
+              "driveName": { "type": "string" },
+              "itemId": { "type": "string" },
+              "sheetName": { "type": "string" }
+            },
+            "required": ["driveName", "itemId", "sheetName"]
           },
-          "itemName": {
-            "type": "string"
-          },
-          "itemPath": {
-            "type": "string"
-          },
-          "sheetName": {
-            "type": "string"
+          {
+            "properties": {
+              "driveName": { "type": "string" },
+              "itemName": { "type": "string" },
+              "itemPath": { "type": "string" },
+              "sheetName": { "type": "string" }
+            },
+            "required": ["driveName", "itemName", "sheetName"]
           }
-        },
-        "required": [
-          "driveName",
-          "itemName",
-          "sheetName"
         ]
       }
     }
